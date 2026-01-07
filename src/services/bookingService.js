@@ -1,4 +1,6 @@
 const Room = require('../models/mysql/Room');
+const Booking = require('../models/mysql/Booking');
+const User = require('../models/mysql/User');
 const algorithmService = require('./algorithmService');
 
 class BookingService {

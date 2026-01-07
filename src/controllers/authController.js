@@ -1,4 +1,5 @@
 const User = require('../models/mysql/User');
+const { UserPostgres } = require('../models/postgresql');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
@@ -43,6 +44,21 @@ const register = async (req, res) => {
       phone,
       role: 'user'
     });
+
+    // Dual Write: Create user in PostgreSQL
+    try {
+      await UserPostgres.create({
+        userId: user.userId, // Sync userId
+        name: user.name,
+        email: user.email,
+        password: user.password,
+        phone: user.phone,
+        role: user.role
+      });
+      console.log('✅ User synced to PostgreSQL');
+    } catch (postgresError) {
+      console.error('⚠️ PostgreSQL sync failed (User create):', postgresError.message);
+    }
 
     // Create token
     const token = jwt.sign(
@@ -187,6 +203,19 @@ const updateProfile = async (req, res) => {
 
     await user.save();
 
+    // Dual Write: Update user in PostgreSQL
+    try {
+      const userPostgres = await UserPostgres.findByPk(userId);
+      if (userPostgres) {
+        if (name) userPostgres.name = name;
+        if (phone) userPostgres.phone = phone;
+        await userPostgres.save();
+        console.log('✅ User synced to PostgreSQL (Update)');
+      }
+    } catch (postgresError) {
+      console.error('⚠️ PostgreSQL sync failed (User update):', postgresError.message);
+    }
+
     // Remove password from response
     const userResponse = user.toJSON();
     delete userResponse.password;
@@ -247,6 +276,18 @@ const changePassword = async (req, res) => {
     // Update password
     user.password = newPassword;
     await user.save();
+
+    // Dual Write: Update password in PostgreSQL
+    try {
+      const userPostgres = await UserPostgres.findByPk(userId);
+      if (userPostgres) {
+        userPostgres.password = newPassword;
+        await userPostgres.save();
+        console.log('✅ User synced to PostgreSQL (Password change)');
+      }
+    } catch (postgresError) {
+      console.error('⚠️ PostgreSQL sync failed (Password change):', postgresError.message);
+    }
 
     res.json({
       success: true,

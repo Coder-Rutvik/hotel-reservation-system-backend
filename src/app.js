@@ -51,21 +51,37 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    service: 'Hotel Reservation API - Unstop Assessment',
-    version: '1.0.0',
-    environment: process.env.NODE_ENV || 'development',
-    database: 'MySQL + MongoDB',
-    endpoints: {
-      auth: '/api/auth',
-      bookings: '/api/bookings',
-      rooms: '/api/rooms',
-      admin: '/api/admin'
-    }
-  });
+app.get('/api/health', async (req, res) => {
+  const dbConnections = require('./config/db-connections');
+  
+  try {
+    const dbStatus = await dbConnections.checkAllConnections();
+    
+    res.status(200).json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      service: 'Hotel Reservation API - Unstop Assessment',
+      version: '1.0.0',
+      environment: process.env.NODE_ENV || 'development',
+      databases: {
+        mysql: dbStatus.mysql ? 'connected' : 'disconnected',
+        postgresql: dbStatus.postgresql ? 'connected' : 'disconnected',
+        mongodb: dbStatus.mongodb ? 'connected' : 'disconnected'
+      },
+      endpoints: {
+        auth: '/api/auth',
+        bookings: '/api/bookings',
+        rooms: '/api/rooms',
+        admin: '/api/admin'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: 'Health check failed',
+      error: error.message
+    });
+  }
 });
 
 // API Routes

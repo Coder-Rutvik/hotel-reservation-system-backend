@@ -1,6 +1,7 @@
 const Booking = require('../models/mysql/Booking');
 const Room = require('../models/mysql/Room');
 const User = require('../models/mysql/User');
+const { BookingPostgres, UserPostgres } = require('../models/postgresql');
 const { Op } = require('sequelize');
 const algorithmService = require('../services/algorithmService');
 const bookingService = require('../services/bookingService');
@@ -48,6 +49,26 @@ const bookRooms = async (req, res) => {
       status: 'confirmed',
       paymentStatus: 'pending'
     });
+
+    // Dual Write: Create booking in PostgreSQL
+    try {
+      await BookingPostgres.create({
+        bookingId: booking.bookingId, // Sync bookingId
+        userId: booking.userId,
+        rooms: booking.rooms,
+        totalRooms: booking.totalRooms,
+        travelTime: booking.travelTime,
+        totalPrice: booking.totalPrice,
+        bookingDate: booking.bookingDate,
+        checkInDate: booking.checkInDate,
+        checkOutDate: booking.checkOutDate,
+        status: booking.status,
+        paymentStatus: booking.paymentStatus
+      });
+      console.log('✅ Booking synced to PostgreSQL');
+    } catch (postgresError) {
+      console.error('⚠️ PostgreSQL sync failed (Booking create):', postgresError.message);
+    }
 
     // Update room availability
     await bookingService.updateRoomAvailability(optimalRooms.rooms.map(r => r.number), false);
@@ -214,6 +235,20 @@ const cancelBooking = async (req, res) => {
     booking.status = 'cancelled';
     await booking.save();
 
+    // Dual Write: Cancel booking in PostgreSQL
+    try {
+      const bookingPostgres = await BookingPostgres.findOne({
+        where: { bookingId: id }
+      });
+      if (bookingPostgres) {
+        bookingPostgres.status = 'cancelled';
+        await bookingPostgres.save();
+        console.log('✅ Booking cancellation synced to PostgreSQL');
+      }
+    } catch (postgresError) {
+      console.error('⚠️ PostgreSQL sync failed (Booking cancel):', postgresError.message);
+    }
+
     // Make rooms available again
     await bookingService.updateRoomAvailability(booking.rooms, true);
 
@@ -257,14 +292,14 @@ const getBookingStats = async (req, res) => {
     const userId = req.user.userId;
 
     const totalBookings = await Booking.count({ where: { userId } });
-    const confirmedBookings = await Booking.count({ 
-      where: { userId, status: 'confirmed' } 
+    const confirmedBookings = await Booking.count({
+      where: { userId, status: 'confirmed' }
     });
-    const cancelledBookings = await Booking.count({ 
-      where: { userId, status: 'cancelled' } 
+    const cancelledBookings = await Booking.count({
+      where: { userId, status: 'cancelled' }
     });
-    const totalSpent = await Booking.sum('totalPrice', { 
-      where: { userId, status: 'confirmed' } 
+    const totalSpent = await Booking.sum('totalPrice', {
+      where: { userId, status: 'confirmed' }
     }) || 0;
 
     // Recent bookings (last 30 days)

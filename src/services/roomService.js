@@ -1,3 +1,4 @@
+const { Sequelize, Op } = require('sequelize');
 const Room = require('../models/mysql/Room');
 
 class RoomService {
@@ -10,8 +11,8 @@ class RoomService {
     
     if (filters.minPrice || filters.maxPrice) {
       where.basePrice = {};
-      if (filters.minPrice) where.basePrice[Sequelize.Op.gte] = filters.minPrice;
-      if (filters.maxPrice) where.basePrice[Sequelize.Op.lte] = filters.maxPrice;
+      if (filters.minPrice) where.basePrice[Op.gte] = filters.minPrice;
+      if (filters.maxPrice) where.basePrice[Op.lte] = filters.maxPrice;
     }
     
     return await Room.findAll({

@@ -1,3 +1,4 @@
+const { Sequelize, Op } = require('sequelize');
 const User = require('../models/mysql/User');
 const Booking = require('../models/mysql/Booking');
 const Room = require('../models/mysql/Room');
@@ -157,6 +158,13 @@ const updateRoom = async (req, res) => {
       });
     }
     
+    // Save old values before updating
+    const oldValues = {
+      roomType: room.roomType,
+      basePrice: room.basePrice,
+      isAvailable: room.isAvailable
+    };
+    
     if (roomType) room.roomType = roomType;
     if (basePrice) room.basePrice = basePrice;
     if (isAvailable !== undefined) room.isAvailable = isAvailable;
@@ -168,8 +176,12 @@ const updateRoom = async (req, res) => {
       entity: 'Room',
       entityId: id.toString(),
       action: 'UPDATE',
-      oldValue: room._previousDataValues,
-      newValue: room.dataValues,
+      oldValue: oldValues,
+      newValue: {
+        roomType: room.roomType,
+        basePrice: room.basePrice,
+        isAvailable: room.isAvailable
+      },
       changedBy: req.user.email,
       changedById: req.user.userId.toString(),
       ipAddress: req.ip
@@ -194,6 +206,9 @@ const updateRoom = async (req, res) => {
 // @access  Private/Admin
 const getDashboardStats = async (req, res) => {
   try {
+    // Check database connections
+    const dbConnections = require('../config/db-connections');
+    const dbStatus = await dbConnections.checkAllConnections();
     // Get total rooms
     const totalRooms = await Room.count();
     const availableRooms = await Room.count({ where: { isAvailable: true } });
@@ -248,6 +263,11 @@ const getDashboardStats = async (req, res) => {
         revenue: {
           total: parseFloat(totalRevenue),
           formatted: `₹${parseFloat(totalRevenue).toLocaleString('en-IN')}`
+        },
+        databases: {
+          mysql: dbStatus.mysql ? 'connected' : 'disconnected',
+          postgresql: dbStatus.postgresql ? 'connected' : 'disconnected',
+          mongodb: dbStatus.mongodb ? 'connected' : 'disconnected'
         }
       }
     });

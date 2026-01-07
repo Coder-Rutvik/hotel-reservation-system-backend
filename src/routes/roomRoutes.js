@@ -1,13 +1,20 @@
 const express = require('express');
 const router = express.Router();
+const {
+  getAllRooms,
+  getAvailableRooms,
+  getRoomsByFloor,
+  getRoomByNumber,
+  getRoomTypes,
+  searchRooms
+} = require('../controllers/roomController');
+const { roomSearchValidation } = require('../middleware/validation');
 
-// Placeholder routes
-router.get('/', (req, res) => {
-  res.json({ message: 'Get all rooms endpoint' });
-});
-
-router.get('/available', (req, res) => {
-  res.json({ message: 'Get available rooms endpoint' });
-});
+router.get('/', getAllRooms);
+router.get('/available', getAvailableRooms);
+router.get('/types', getRoomTypes);
+router.get('/search', roomSearchValidation, searchRooms);
+router.get('/floor/:floorNumber', getRoomsByFloor);
+router.get('/number/:roomNumber', getRoomByNumber);
 
 module.exports = router;
