@@ -75,6 +75,27 @@ async function initializeDatabases() {
   
   // PostgreSQL (Primary - Required)
   try {
+    // Fail-fast in production when DATABASE_URL/POSTGRES_HOST points to localhost
+    if (process.env.NODE_ENV === 'production') {
+      let dbHost = null;
+      try {
+        if (process.env.DATABASE_URL) {
+          dbHost = new URL(process.env.DATABASE_URL).hostname;
+        } else {
+          dbHost = process.env.POSTGRES_HOST;
+        }
+      } catch (e) {
+        dbHost = null;
+      }
+
+      if (!dbHost || dbHost === 'localhost' || dbHost === '127.0.0.1') {
+        console.error('❌ FATAL: DATABASE_URL points to localhost or is not set while NODE_ENV=production.');
+        console.error('💡 Please set the managed Postgres `DATABASE_URL` in your Render service environment variables and set `PG_SSL=true` if required.');
+        // Exit early so deployments fail fast and you can fix environment variables in Render
+        process.exit(1);
+      }
+    }
+
     const sequelizePostgres = require('./src/config/postgresql');
 
     // Diagnostic: log host from DATABASE_URL if present, and validate
