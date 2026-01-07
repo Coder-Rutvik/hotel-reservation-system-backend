@@ -13,10 +13,11 @@ const sequelizePostgres = process.env.DATABASE_URL
       keepAlive: true
     },
     pool: {
-      max: 2,
+      max: 4, // Allow slight concurrency
       min: 0,
       acquire: 30000,
-      idle: 10000,
+      idle: 0, // Disconnect immediately after use ("Fresh Connection" strategy)
+      evict: 10000,
       // Verify connection before using it
       validate: (obj) => {
         // If the connection is not valid, looking at 'SELECT 1' usually works
