@@ -107,13 +107,23 @@ const testConnection = async () => {
   }
 };
 
-// Run connection test
-if (process.env.NODE_ENV !== 'test') {
+// Auto-test connection only when host configuration looks valid
+const isHostValid = () => {
+  if (process.env.DATABASE_URL) return true;
+  const host = process.env.POSTGRES_HOST || 'localhost';
+  if (host === 'localhost') return true;
+  // Consider host valid only if it's a fully-qualified domain (contains a dot)
+  return host.includes('.');
+};
+
+if (process.env.NODE_ENV !== 'test' && isHostValid()) {
   testConnection().then(success => {
     if (!success && process.env.NODE_ENV === 'production') {
       console.warn('⚠️  PostgreSQL connection failed but continuing in production mode');
     }
   });
+} else if (!isHostValid()) {
+  console.warn('⚠️  Skipping automatic PostgreSQL connection test due to incomplete host configuration. Set `DATABASE_URL` or a fully qualified `POSTGRES_HOST` to enable it.');
 }
 
 module.exports = sequelizePostgres;

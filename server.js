@@ -69,16 +69,47 @@ async function initializeDatabases() {
   
   // PostgreSQL (Primary - Required)
   try {
-    const { sequelizePostgres } = require('./src/config/postgresql');
-    
-    const connected = await retryConnection(
-      async () => {
-        await sequelizePostgres.authenticate();
-      },
-      'PostgreSQL',
-      3,
-      3000
-    );
+    const sequelizePostgres = require('./src/config/postgresql');
+
+    // Diagnostic: log host from DATABASE_URL if present, and validate
+    let pgHost = 'localhost';
+    if (process.env.DATABASE_URL) {
+      try {
+        pgHost = new URL(process.env.DATABASE_URL).hostname;
+        console.log(`🔗 PostgreSQL host: ${pgHost}`);
+      } catch (e) {
+        console.log('🔗 PostgreSQL host: (could not parse DATABASE_URL)');
+      }
+    } else {
+      pgHost = process.env.POSTGRES_HOST || 'localhost';
+      console.log(`🔗 PostgreSQL host: ${pgHost}`);
+    }
+
+    // If the host looks incomplete (no dot and not localhost), warn and skip retries
+    let skipPostgres = false;
+    if (pgHost !== 'localhost' && !pgHost.includes('.')) {
+      console.error('❌ PostgreSQL host appears incomplete or missing domain:', pgHost);
+      console.error('💡 Please set `DATABASE_URL` or provide a fully qualified `POSTGRES_HOST` (e.g. my-db.xxxxx.region.rds.amazonaws.com) in your .env or Render environment variables.');
+      skipPostgres = true;
+    }
+
+    if (skipPostgres) {
+      console.warn('⚠️  Skipping PostgreSQL connection attempts due to invalid host configuration.');
+      var connected = false; // proceed without DB
+    } else {
+      if (!sequelizePostgres || typeof sequelizePostgres.authenticate !== 'function') {
+        throw new Error('PostgreSQL client is not available or not a Sequelize instance');
+      }
+
+      var connected = await retryConnection(
+        async () => {
+          await sequelizePostgres.authenticate();
+        },
+        'PostgreSQL',
+        3,
+        3000
+      );
+    }
     
     if (connected) {
       console.log('🔄 Syncing PostgreSQL models...');
