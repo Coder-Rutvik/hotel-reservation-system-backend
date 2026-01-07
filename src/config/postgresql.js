@@ -16,7 +16,13 @@ const sequelizePostgres = process.env.DATABASE_URL
       max: 2,
       min: 0,
       acquire: 30000,
-      idle: 10000
+      idle: 10000,
+      // Verify connection before using it
+      validate: (obj) => {
+        // If the connection is not valid, looking at 'SELECT 1' usually works
+        if (!obj || !obj.query) return false;
+        return obj.query('SELECT 1').then(() => true).catch(() => false);
+      }
     },
     retry: {
       match: [
