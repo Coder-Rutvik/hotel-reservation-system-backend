@@ -1,73 +1,59 @@
 require('dotenv').config();
 
-// Validate required environment variables
-if (!process.env.JWT_SECRET) {
-  console.error('❌ ERROR: JWT_SECRET environment variable is required!');
-  console.error('Please set JWT_SECRET in your .env file');
-  process.exit(1);
+// Validate required environment variables for production
+if (process.env.NODE_ENV === 'production') {
+  const requiredVars = ['JWT_SECRET', 'DATABASE_URL'];
+  const missingVars = requiredVars.filter(varName => !process.env[varName]);
+  
+  if (missingVars.length > 0) {
+    console.error('❌ ERROR: Missing required environment variables:', missingVars);
+    process.exit(1);
+  }
 }
 
-const sequelize = require('./src/config/mysql');
+// For Render, focus only on PostgreSQL and MongoDB
 const sequelizePostgres = require('./src/config/postgresql');
-// Load MySQL models and associations early so controllers see associations
-require('./src/models/mysql');
-// Load PostgreSQL connection
-require('./src/models/postgresql');
 const connectMongoDB = require('./src/config/mongodb');
-// Export all connections centrally
-const dbConnections = require('./src/config/db-connections');
 const app = require('./src/app');
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 10000;
 
 const startServer = async () => {
   try {
-    console.log('🚀 Starting Hotel Reservation System Backend...');
+    console.log('🚀 Starting Hotel Reservation System Backend on Render...');
     console.log('===========================================');
     
-    // Connect to MySQL
-    await sequelize.authenticate();
-    console.log('✅ MySQL connected successfully');
-    
-    // Connect to PostgreSQL
+    // Connect to PostgreSQL (Primary for Render)
     try {
       await sequelizePostgres.authenticate();
       console.log('✅ PostgreSQL connected successfully');
+      
+      // Optional: Sync in development only
+      if (process.env.NODE_ENV === 'development') {
+        const { sequelizePostgres: seqPg } = require('./src/models/postgresql');
+        await seqPg.sync({ alter: true });
+        console.log('✅ PostgreSQL database synced');
+      }
     } catch (postgresError) {
-      console.warn('⚠️  PostgreSQL connection failed (continuing with MySQL/MongoDB):', postgresError.message);
+      console.error('❌ PostgreSQL connection failed:', postgresError.message);
+      console.log('⚠️  Continuing without PostgreSQL...');
     }
     
-    // Connect to MongoDB
-    await connectMongoDB();
-    
-    // Sync databases (optional - remove in production)
-    if (process.env.NODE_ENV === 'development') {
-      await sequelize.sync();
-      console.log('✅ MySQL database synced');
-      
-      // Sync PostgreSQL if connected
-      try {
-        const { sequelizePostgres } = require('./src/models/postgresql');
-        await sequelizePostgres.sync();
-        console.log('✅ PostgreSQL database synced');
-      } catch (syncError) {
-        console.warn('⚠️  PostgreSQL sync skipped:', syncError.message);
-      }
+    // Connect to MongoDB (Optional)
+    try {
+      await connectMongoDB();
+      console.log('✅ MongoDB connected successfully');
+    } catch (mongoError) {
+      console.warn('⚠️  MongoDB connection failed (continuing without):', mongoError.message);
     }
     
     app.listen(PORT, () => {
       console.log(`✅ Server running on port ${PORT}`);
-      console.log(`📁 Environment: ${process.env.NODE_ENV}`);
-      console.log(`🔗 MySQL Database: ${process.env.MYSQL_DATABASE}`);
-      console.log(`🐘 PostgreSQL Database: ${process.env.POSTGRES_DATABASE}`);
-      console.log(`📊 MongoDB URI: ${process.env.MONGODB_URI}`);
+      console.log(`📁 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🐘 PostgreSQL: ${process.env.DATABASE_URL ? 'Connected' : 'Not configured'}`);
+      console.log(`📊 MongoDB: ${process.env.MONGODB_URI ? 'Connected' : 'Not configured'}`);
       console.log('===========================================');
-      console.log(`🌐 API Base URL: http://localhost:${PORT}/api`);
-      console.log(`❤️  Health Check: http://localhost:${PORT}/api/health`);
-      console.log(`🏨 Get All Rooms: http://localhost:${PORT}/api/rooms`);
-      console.log(`🔐 Register User: POST http://localhost:${PORT}/api/auth/register`);
-      console.log('===========================================');
-      console.log('🎉 Backend ready for Unstop Assessment!');
+      console.log('🎉 Backend ready on Render!');
     });
     
   } catch (error) {
@@ -79,10 +65,14 @@ const startServer = async () => {
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
   console.error('❌ Unhandled Promise Rejection:', err);
-  process.exit(1);
+  // Don't exit in production, just log
+  if (process.env.NODE_ENV === 'production') {
+    console.log('⚠️  Continuing despite unhandled rejection');
+  } else {
+    process.exit(1);
+  }
 });
 
-// Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
   console.error('❌ Uncaught Exception:', err);
   process.exit(1);

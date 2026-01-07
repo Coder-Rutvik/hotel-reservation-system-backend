@@ -48,7 +48,7 @@ const register = async (req, res) => {
     // Dual Write: Create user in PostgreSQL
     try {
       await UserPostgres.create({
-        userId: user.userId, // Sync userId
+        userId: user.userId,
         name: user.name,
         email: user.email,
         password: user.password,
