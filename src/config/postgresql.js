@@ -1,8 +1,41 @@
 const { Sequelize } = require('sequelize');
 require('dotenv').config();
 
-const sequelizePostgres = process.env.DATABASE_URL
-  ? new Sequelize(process.env.DATABASE_URL, {
+// Enhanced PostgreSQL connection with better error handling
+const getPostgresConnection = () => {
+  if (!process.env.DATABASE_URL) {
+    console.warn('⚠️  DATABASE_URL not found. Using fallback configuration.');
+    return new Sequelize(
+      process.env.POSTGRES_DATABASE || 'hotel_reservation',
+      process.env.POSTGRES_USER || 'postgres',
+      process.env.POSTGRES_PASSWORD || '',
+      {
+        host: process.env.POSTGRES_HOST || 'localhost',
+        port: process.env.POSTGRES_PORT || 5432,
+        dialect: 'postgres',
+        logging: process.env.NODE_ENV === 'development' ? console.log : false,
+        pool: {
+          max: 5,
+          min: 0,
+          acquire: 30000,
+          idle: 10000
+        },
+        dialectOptions: {
+          ssl: process.env.NODE_ENV === 'production' ? {
+            require: true,
+            rejectUnauthorized: false
+          } : false
+        }
+      }
+    );
+  }
+
+  // Parse the DATABASE_URL for logging (masked)
+  const urlObj = new URL(process.env.DATABASE_URL);
+  const maskedUrl = `postgresql://${urlObj.username}:****@${urlObj.hostname}:${urlObj.port}${urlObj.pathname}`;
+  console.log(`🔗 Connecting to PostgreSQL: ${maskedUrl}`);
+
+  return new Sequelize(process.env.DATABASE_URL, {
     dialect: 'postgres',
     logging: process.env.NODE_ENV === 'development' ? console.log : false,
     dialectOptions: {
@@ -11,33 +44,21 @@ const sequelizePostgres = process.env.DATABASE_URL
         rejectUnauthorized: false
       },
       keepAlive: true,
-      // Add connection timeout
-      connectTimeout: 60000,
-      // Statement timeout (30 seconds)
+      connectTimeout: 30000, // 30 seconds
       statement_timeout: 30000,
-      // Query timeout
       query_timeout: 30000
     },
     pool: {
-      max: 3, // Reduced for free tier
+      max: 2, // Reduce for Render free tier
       min: 0,
-      acquire: 60000, // Increased to 60 seconds
-      idle: 30000, // Keep connection alive for 30 seconds
-      evict: 5000,
-      // Handle connection errors gracefully
-      handleDisconnects: true
+      acquire: 60000,
+      idle: 10000,
+      evict: 10000
     },
     retry: {
       match: [
         /ConnectionError/,
         /SequelizeConnectionError/,
-        /SequelizeConnectionRefusedError/,
-        /SequelizeHostNotFoundError/,
-        /SequelizeHostNotReachableError/,
-        /SequelizeInvalidConnectionError/,
-        /SequelizeConnectionTimedOutError/,
-        /SequelizeConnectionTerminatedError/,
-        /Connection terminated unexpectedly/,
         /Connection terminated/,
         /ETIMEDOUT/,
         /ECONNRESET/,
@@ -45,53 +66,54 @@ const sequelizePostgres = process.env.DATABASE_URL
         /ENETUNREACH/,
         /ECONNREFUSED/
       ],
-      max: 5, // Retry 5 times
-      backoffBase: 1000, // Start with 1 second
-      backoffExponent: 1.5 // Exponential backoff
+      max: 3,
+      backoffBase: 1000,
+      backoffExponent: 1.5
     },
-    // Add query timeout
     define: {
-      charset: 'utf8',
-      collate: 'utf8_general_ci'
+      timestamps: true,
+      underscored: true
     }
-  })
-  : new Sequelize(
-    process.env.POSTGRES_DATABASE || 'hotel_reservation',
-    process.env.POSTGRES_USER || 'postgres',
-    process.env.POSTGRES_PASSWORD || '',
-    {
-      host: process.env.POSTGRES_HOST || 'localhost',
-      port: process.env.POSTGRES_PORT || 5432,
-      dialect: 'postgres',
-      logging: process.env.NODE_ENV === 'development' ? console.log : false,
-      pool: {
-        max: 10,
-        min: 0,
-        acquire: 30000,
-        idle: 10000
-      }
-    }
-  );
-
-// Test connection on startup
-if (process.env.DATABASE_URL) {
-  sequelizePostgres.authenticate()
-    .then(() => {
-      console.log('✅ PostgreSQL initial connection successful');
-    })
-    .catch(err => {
-      console.error('❌ PostgreSQL initial connection failed:', err.message);
-    });
-}
-
-// Handle pool errors (guarded for different Sequelize versions)
-const pgPool = (sequelizePostgres.connectionManager && sequelizePostgres.connectionManager.pool) || sequelizePostgres.pool;
-if (pgPool && typeof pgPool.on === 'function') {
-  pgPool.on('error', (err) => {
-    console.error('❌ PostgreSQL pool error:', err);
   });
-} else {
-  console.warn('⚠️ PostgreSQL pool not available; skipping pool error handler.');
+};
+
+const sequelizePostgres = getPostgresConnection();
+
+// Test connection with retry logic
+const testConnection = async () => {
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      await sequelizePostgres.authenticate();
+      console.log('✅ PostgreSQL connection authenticated');
+      
+      // Test a simple query
+      const [result] = await sequelizePostgres.query('SELECT version()');
+      console.log('📊 PostgreSQL version:', result[0]?.version?.split(' ')[1] || 'Unknown');
+      
+      return true;
+    } catch (error) {
+      retries--;
+      console.error(`❌ PostgreSQL connection failed. Retries left: ${retries}`, error.message);
+      
+      if (retries === 0) {
+        console.error('❌ All PostgreSQL connection attempts failed');
+        return false;
+      }
+      
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  }
+};
+
+// Run connection test
+if (process.env.NODE_ENV !== 'test') {
+  testConnection().then(success => {
+    if (!success && process.env.NODE_ENV === 'production') {
+      console.warn('⚠️  PostgreSQL connection failed but continuing in production mode');
+    }
+  });
 }
 
 module.exports = sequelizePostgres;
