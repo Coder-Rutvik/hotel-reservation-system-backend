@@ -1,7 +1,12 @@
-const User = require('../models/mysql/User');
+const UserMySQL = require('../models/mysql/User');
 const { UserPostgres } = require('../models/postgresql');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+
+// Determine Primary User Model based on Environment
+// If we have a DATABASE_URL (Render), use Postgres as Primary
+const isPostgresPrimary = !!process.env.DATABASE_URL;
+const User = isPostgresPrimary ? UserPostgres : UserMySQL;
 
 // @desc    Register user
 // @route   POST /api/auth/register
@@ -45,19 +50,21 @@ const register = async (req, res) => {
       role: 'user'
     });
 
-    // Dual Write: Create user in PostgreSQL
-    try {
-      await UserPostgres.create({
-        userId: user.userId,
-        name: user.name,
-        email: user.email,
-        password: user.password,
-        phone: user.phone,
-        role: user.role
-      });
-      console.log('✅ User synced to PostgreSQL');
-    } catch (postgresError) {
-      console.error('⚠️ PostgreSQL sync failed (User create):', postgresError.message);
+    // Dual Write: Only sync to Postgres if we are NOT already using it as primary
+    if (!isPostgresPrimary) {
+      try {
+        await UserPostgres.create({
+          userId: user.userId,
+          name: user.name,
+          email: user.email,
+          password: user.password,
+          phone: user.phone,
+          role: user.role
+        });
+        console.log('✅ User synced to PostgreSQL');
+      } catch (postgresError) {
+        console.error('⚠️ PostgreSQL sync failed (User create):', postgresError.message);
+      }
     }
 
     // Create token
@@ -203,17 +210,19 @@ const updateProfile = async (req, res) => {
 
     await user.save();
 
-    // Dual Write: Update user in PostgreSQL
-    try {
-      const userPostgres = await UserPostgres.findByPk(userId);
-      if (userPostgres) {
-        if (name) userPostgres.name = name;
-        if (phone) userPostgres.phone = phone;
-        await userPostgres.save();
-        console.log('✅ User synced to PostgreSQL (Update)');
+    // Dual Write: Update user in PostgreSQL (Only if not primary)
+    if (!isPostgresPrimary) {
+      try {
+        const userPostgres = await UserPostgres.findByPk(userId);
+        if (userPostgres) {
+          if (name) userPostgres.name = name;
+          if (phone) userPostgres.phone = phone;
+          await userPostgres.save();
+          console.log('✅ User synced to PostgreSQL (Update)');
+        }
+      } catch (postgresError) {
+        console.error('⚠️ PostgreSQL sync failed (User update):', postgresError.message);
       }
-    } catch (postgresError) {
-      console.error('⚠️ PostgreSQL sync failed (User update):', postgresError.message);
     }
 
     // Remove password from response
@@ -277,16 +286,18 @@ const changePassword = async (req, res) => {
     user.password = newPassword;
     await user.save();
 
-    // Dual Write: Update password in PostgreSQL
-    try {
-      const userPostgres = await UserPostgres.findByPk(userId);
-      if (userPostgres) {
-        userPostgres.password = newPassword;
-        await userPostgres.save();
-        console.log('✅ User synced to PostgreSQL (Password change)');
+    // Dual Write: Update password in PostgreSQL (Only if not primary)
+    if (!isPostgresPrimary) {
+      try {
+        const userPostgres = await UserPostgres.findByPk(userId);
+        if (userPostgres) {
+          userPostgres.password = newPassword;
+          await userPostgres.save();
+          console.log('✅ User synced to PostgreSQL (Password change)');
+        }
+      } catch (postgresError) {
+        console.error('⚠️ PostgreSQL sync failed (Password change):', postgresError.message);
       }
-    } catch (postgresError) {
-      console.error('⚠️ PostgreSQL sync failed (Password change):', postgresError.message);
     }
 
     res.json({
