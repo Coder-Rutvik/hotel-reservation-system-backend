@@ -173,10 +173,9 @@ async function initializeDatabases() {
 }
 
 // Health endpoint ping (self-check)
-async function selfHealthCheck() {
+async function selfHealthCheck(portToCheck = PORT) {
   try {
-    const response = await fetch(`http://localhost:${PORT}/api/health`, {
-      timeout: 5000
+    const response = await fetch(`http://localhost:${portToCheck}/api/health`, {
     }).catch(() => null);
     
     if (response && response.ok) {
@@ -193,40 +192,55 @@ async function selfHealthCheck() {
 const startServer = async () => {
   try {
     console.log('\n🚀 Starting Express server...');
-    
-    // Start server immediately
-    const server = app.listen(PORT, '0.0.0.0', () => {
-      console.log(`✅ Express server running on port ${PORT}`);
-      console.log(`🌐 Local URL: http://localhost:${PORT}`);
-      console.log(`🔍 Health endpoint: http://localhost:${PORT}/api/health`);
-      console.log('===========================================\n');
-      
-      // Perform self-health check after server starts
-      setTimeout(selfHealthCheck, 2000);
+
+    // Try listening on PORT, if in use try next ports (up to 3 attempts)
+    let basePort = Number(process.env.PORT) || 10000;
+    let server;
+    let actualPort = basePort;
+
+    const tryListen = (port, attemptsLeft = 3) => new Promise((resolve, reject) => {
+      const s = app.listen(port, '0.0.0.0')
+        .once('listening', () => resolve({ server: s, port }))
+        .once('error', (err) => {
+          if (err.code === 'EADDRINUSE' && attemptsLeft > 1) {
+            console.warn(`⚠️ Port ${port} in use, trying port ${port + 1}...`);
+            // Try next port
+            resolve(tryListen(port + 1, attemptsLeft - 1));
+          } else {
+            reject(err);
+          }
+        });
     });
-    
+
+    const res = await tryListen(basePort, 3);
+    server = res.server;
+    actualPort = res.port;
+
+    console.log(`✅ Express server running on port ${actualPort}`);
+    console.log(`🌐 Local URL: http://localhost:${actualPort}`);
+    console.log(`🔍 Health endpoint: http://localhost:${actualPort}/api/health`);
+    console.log('===========================================\n');
+
+    // Update selfHealthCheck to use actualPort
+    setTimeout(() => selfHealthCheck(actualPort), 2000);
+
     // Initialize databases in background
     setTimeout(initializeDatabases, 1000);
-    
-    // Handle server errors
+
+    // Handle server errors after startup
     server.on('error', (error) => {
-      if (error.code === 'EADDRINUSE') {
-        console.error(`❌ Port ${PORT} is already in use`);
-        process.exit(1);
-      } else {
-        console.error('❌ Server error:', error);
-        process.exit(1);
-      }
+      console.error('❌ Server error:', error);
+      process.exit(1);
     });
-    
+
     // Graceful shutdown handlers
     const gracefulShutdown = async (signal) => {
       console.log(`\n🔄 ${signal} received. Shutting down gracefully...`);
-      
+
       // Close server
       server.close(async () => {
         console.log('✅ HTTP server closed');
-        
+
         // Close database connections
         try {
           const dbConnections = require('./src/config/db-connections');
@@ -235,22 +249,22 @@ const startServer = async () => {
         } catch (dbError) {
           console.error('❌ Error closing databases:', dbError.message);
         }
-        
+
         console.log('👋 Shutdown complete');
         process.exit(0);
       });
-      
+
       // Force shutdown after 10 seconds
       setTimeout(() => {
         console.error('❌ Forcing shutdown after timeout');
         process.exit(1);
       }, 10000);
     };
-    
+
     // Handle termination signals
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-    
+
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     console.error('Stack:', error.stack);
