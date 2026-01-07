@@ -6,6 +6,12 @@ console.log('===========================================');
 // Log environment (mask sensitive info)
 console.log('📊 Environment:', process.env.NODE_ENV || 'development');
 console.log('🔧 Port:', process.env.PORT || 10000);
+
+// Warn if the web server PORT is mistakenly set to the PostgreSQL default (5432)
+if (process.env.PORT === '5432') {
+  console.warn('⚠️ Environment variable PORT is set to 5432 (Postgres default). On Render the platform sets the PORT for the web service — unset this to avoid conflicts and allow Render to assign the correct port.');
+}
+
 console.log('🌐 CORS Origin:', process.env.CORS_ORIGIN || 'Not set');
 
 // Log database URLs (masked for security)
