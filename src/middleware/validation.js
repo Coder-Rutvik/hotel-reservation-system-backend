@@ -1,22 +1,33 @@
+// src/middleware/validation.js
 const { body, param, query, validationResult } = require('express-validator');
 
-// Validation middleware
+// Validation middleware - IMPROVED with detailed error messages
 const validate = (validations) => {
   return async (req, res, next) => {
+    // Run all validations
     await Promise.all(validations.map(validation => validation.run(req)));
 
     const errors = validationResult(req);
+    
     if (errors.isEmpty()) {
       return next();
     }
 
+    // IMPROVED: Log detailed errors
+    console.log('❌ Validation Failed:');
+    errors.array().forEach(err => {
+      console.log(`   - ${err.param}: ${err.msg} (value: ${err.value})`);
+    });
+
+    // IMPROVED: Return detailed error response
     res.status(400).json({
       success: false,
       message: 'Validation errors',
       errors: errors.array().map(err => ({
         field: err.param,
         message: err.msg,
-        value: err.value
+        value: err.value,
+        location: err.location
       }))
     });
   };
@@ -56,7 +67,7 @@ const loginValidation = validate([
     .notEmpty().withMessage('Password is required')
 ]);
 
-// Booking validation
+// Booking validation - FIXED with proper date validation
 const bookingValidation = validate([
   body('numRooms')
     .notEmpty().withMessage('Number of rooms is required')
@@ -64,28 +75,43 @@ const bookingValidation = validate([
   
   body('checkInDate')
     .notEmpty().withMessage('Check-in date is required')
-    .isDate().withMessage('Please provide a valid check-in date')
     .custom((value, { req }) => {
+      // Check if valid date format
       const checkIn = new Date(value);
+      if (isNaN(checkIn.getTime())) {
+        throw new Error('Invalid check-in date format');
+      }
+      
+      // Check if not in past
       const today = new Date();
       today.setHours(0, 0, 0, 0);
+      checkIn.setHours(0, 0, 0, 0);
       
       if (checkIn < today) {
         throw new Error('Check-in date cannot be in the past');
       }
+      
       return true;
     }),
   
   body('checkOutDate')
     .notEmpty().withMessage('Check-out date is required')
-    .isDate().withMessage('Please provide a valid check-out date')
     .custom((value, { req }) => {
-      const checkIn = new Date(req.body.checkInDate);
+      // Check if valid date format
       const checkOut = new Date(value);
+      if (isNaN(checkOut.getTime())) {
+        throw new Error('Invalid check-out date format');
+      }
+      
+      // Check if after check-in
+      const checkIn = new Date(req.body.checkInDate);
+      checkIn.setHours(0, 0, 0, 0);
+      checkOut.setHours(0, 0, 0, 0);
       
       if (checkOut <= checkIn) {
         throw new Error('Check-out date must be after check-in date');
       }
+      
       return true;
     })
 ]);

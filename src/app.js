@@ -97,7 +97,7 @@ app.get('/api/health', async (req, res) => {
 
 // DB diagnostic endpoint - runs a simple SQL query against PostgreSQL
 app.get('/api/db-test', async (req, res) => {
-  const { sequelizePostgres } = require('./config/postgresql');
+  const sequelizePostgres = require('./config/database');
   try {
     const [result] = await sequelizePostgres.query('SELECT 1+1 AS result');
     res.status(200).json({ success: true, result });

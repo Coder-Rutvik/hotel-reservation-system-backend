@@ -1,5 +1,5 @@
 require('dotenv').config();
-const sequelize = require('../config/postgresql');
+const sequelize = require('../config/database');
 
 // Import models (PostgreSQL)
 const User = require('../models/postgresql/User');

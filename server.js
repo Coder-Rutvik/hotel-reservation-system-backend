@@ -92,7 +92,7 @@ async function initializeDatabases() {
       }
     }
 
-    const sequelizePostgres = require('./src/config/postgresql');
+    const sequelizePostgres = require('./src/config/database');
 
     // Diagnostic: log host from DATABASE_URL if present, and validate
     let pgHost = 'localhost';

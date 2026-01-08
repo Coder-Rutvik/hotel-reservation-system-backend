@@ -1,4 +1,4 @@
-const sequelize = require('../src/config/postgresql');
+const sequelize = require('../src/config/database');
 const { BookingPostgres, UserPostgres } = require('../src/models/postgresql');
 
 (async () => {

@@ -1,5 +1,5 @@
 require('dotenv').config();
-const sequelizePostgres = require('../config/postgresql');
+const sequelizePostgres = require('../config/database');
 
 const verifyTables = async () => {
   try {

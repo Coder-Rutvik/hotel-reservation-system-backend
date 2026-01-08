@@ -1,3 +1,4 @@
+// src/routes/bookingRoutes.js
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/auth');
@@ -13,6 +14,7 @@ const {
 // All routes require authentication
 router.use(protect);
 
+// Keep validation middleware - it's good practice!
 router.route('/')
   .post(bookingValidation, bookRooms);
 

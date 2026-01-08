@@ -1,9 +1,9 @@
+// src/controllers/bookingController.js
 const { BookingPostgres, UserPostgres, RoomPostgres } = require('../models/postgresql');
 const { Op } = require('sequelize');
 const algorithmService = require('../services/algorithmService');
 const bookingService = require('../services/bookingService');
 
-// Use Postgres models as primary
 const Booking = BookingPostgres;
 const User = UserPostgres;
 const Room = RoomPostgres;
@@ -16,9 +16,12 @@ const bookRooms = async (req, res) => {
     const { numRooms, checkInDate, checkOutDate } = req.body;
     const userId = req.user.userId;
 
+    console.log('📝 Booking Request:', { numRooms, checkInDate, checkOutDate, userId });
+
     // Validate booking
     const validation = await bookingService.validateBooking(numRooms, checkInDate, checkOutDate);
     if (!validation.valid) {
+      console.log('❌ Validation Failed:', validation.message);
       return res.status(400).json({
         success: false,
         message: validation.message
@@ -28,11 +31,17 @@ const bookRooms = async (req, res) => {
     // Find optimal rooms
     const optimalRooms = await bookingService.findOptimalRooms(numRooms);
     if (!optimalRooms) {
+      console.log('❌ No rooms available');
       return res.status(400).json({
         success: false,
         message: `Not enough available rooms for ${numRooms} rooms`
       });
     }
+
+    console.log('✅ Optimal Rooms Found:', {
+      rooms: optimalRooms.rooms.map(r => r.number),
+      travelTime: optimalRooms.travelTime
+    });
 
     // Calculate price
     const totalPrice = await bookingService.calculateTotalPrice(optimalRooms, checkInDate, checkOutDate);
@@ -50,41 +59,12 @@ const bookRooms = async (req, res) => {
       paymentStatus: 'pending'
     });
 
-    // Dual Write: Create booking in PostgreSQL
-    try {
-      await BookingPostgres.create({
-        bookingId: booking.bookingId, // Sync bookingId
-        userId: booking.userId,
-        rooms: booking.rooms,
-        totalRooms: booking.totalRooms,
-        travelTime: booking.travelTime,
-        totalPrice: booking.totalPrice,
-        bookingDate: booking.bookingDate,
-        checkInDate: booking.checkInDate,
-        checkOutDate: booking.checkOutDate,
-        status: booking.status,
-        paymentStatus: booking.paymentStatus
-      });
-      console.log('✅ Booking synced to PostgreSQL');
-    } catch (postgresError) {
-      console.error('⚠️ PostgreSQL sync failed (Booking create):', postgresError.message);
-    }
+    console.log('✅ Booking Created:', booking.bookingId);
 
     // Update room availability
     await bookingService.updateRoomAvailability(optimalRooms.rooms.map(r => r.number), false);
 
-    // Log to console
-    try {
-      console.log('LOG: BOOK_ROOMS', {
-        userId: userId.toString(),
-        bookingId: booking.bookingId,
-        rooms: optimalRooms.rooms.map(r => r.number),
-        travelTime: optimalRooms.travelTime,
-        totalPrice
-      });
-    } catch (logError) {
-      console.error('Logging error (non-critical):', logError);
-    }
+    console.log('✅ Rooms Updated:', optimalRooms.rooms.map(r => r.number));
 
     res.status(201).json({
       success: true,
@@ -102,10 +82,11 @@ const bookRooms = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Booking error:', error);
+    console.error('❌ Booking error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: 'Server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -193,6 +174,8 @@ const cancelBooking = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.userId;
 
+    console.log('🔄 Cancel Booking Request:', { bookingId: id, userId });
+
     const booking = await Booking.findOne({
       where: {
         bookingId: id,
@@ -217,6 +200,8 @@ const cancelBooking = async (req, res) => {
     // Check if check-in date is in future
     const checkInDate = new Date(booking.checkInDate);
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
     if (checkInDate <= today) {
       return res.status(400).json({
         success: false,
@@ -228,33 +213,10 @@ const cancelBooking = async (req, res) => {
     booking.status = 'cancelled';
     await booking.save();
 
-    // Dual Write: Cancel booking in PostgreSQL
-    try {
-      const bookingPostgres = await BookingPostgres.findOne({
-        where: { bookingId: id }
-      });
-      if (bookingPostgres) {
-        bookingPostgres.status = 'cancelled';
-        await bookingPostgres.save();
-        console.log('✅ Booking cancellation synced to PostgreSQL');
-      }
-    } catch (postgresError) {
-      console.error('⚠️ PostgreSQL sync failed (Booking cancel):', postgresError.message);
-    }
-
     // Make rooms available again
     await bookingService.updateRoomAvailability(booking.rooms, true);
 
-    // Log to console
-    try {
-      console.log('LOG: CANCEL_BOOKING', {
-        userId: userId.toString(),
-        bookingId: id,
-        rooms: booking.rooms
-      });
-    } catch (logError) {
-      console.error('Logging error (non-critical):', logError);
-    }
+    console.log('✅ Booking Cancelled:', id);
 
     res.json({
       success: true,
