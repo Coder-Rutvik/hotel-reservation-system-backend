@@ -1,7 +1,9 @@
-const Room = require('../models/mysql/Room');
-const Booking = require('../models/mysql/Booking');
-const User = require('../models/mysql/User');
+const { RoomPostgres, BookingPostgres, UserPostgres } = require('../models/postgresql');
 const algorithmService = require('./algorithmService');
+
+const Room = RoomPostgres;
+const Booking = BookingPostgres;
+const User = UserPostgres;
 
 class BookingService {
   async validateBooking(numRooms, checkInDate, checkOutDate) {

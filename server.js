@@ -21,11 +21,7 @@ if (process.env.DATABASE_URL) {
   console.log('📊 PostgreSQL URL:', maskedPgUrl);
 }
 
-if (process.env.MONGODB_URI) {
-  const maskedMongoUrl = process.env.MONGODB_URI
-    .replace(/\/\/([^:]+):([^@]+)@/, '//$1:****@');
-  console.log('📊 MongoDB URL:', maskedMongoUrl);
-}
+
 
 // Validate required environment variables for production
 if (process.env.NODE_ENV === 'production') {
@@ -174,27 +170,7 @@ async function initializeDatabases() {
     }
   }
   
-  // MongoDB (Optional - for logs)
-  try {
-    const connectMongoDB = require('./src/config/mongodb');
-    
-    const mongoConnected = await retryConnection(
-      async () => {
-        await connectMongoDB();
-      },
-      'MongoDB',
-      2,
-      2000
-    );
-    
-    if (mongoConnected) {
-      console.log('✅ MongoDB ready for logging');
-    } else {
-      console.warn('⚠️  MongoDB not connected - logs will not be stored');
-    }
-  } catch (mongoError) {
-    console.warn('⚠️  MongoDB connection failed (optional, continuing):', mongoError.message);
-  }
+
   
   console.log('✅ Database initialization complete\n');
 }
@@ -270,7 +246,7 @@ const startServer = async () => {
 
         // Close database connections
         try {
-          const dbConnections = require('./src/config/db-connections');
+          const dbConnections = require('./src/config/database');
           const closeResults = await dbConnections.closeAllConnections();
           console.log('✅ Database connections closed:', closeResults);
         } catch (dbError) {

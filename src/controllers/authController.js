@@ -1,11 +1,9 @@
-const UserMySQL = require('../models/mysql/User');
 const { UserPostgres } = require('../models/postgresql');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
-// Determine Primary User Model based on Environment
-const isPostgresPrimary = !!process.env.DATABASE_URL;
-const User = isPostgresPrimary ? UserPostgres : UserMySQL;
+// Use Postgres user model only
+const User = UserPostgres;
 
 // Helper function to retry database operations
 const retryOperation = async (operation, maxRetries = 3) => {
@@ -71,25 +69,7 @@ const register = async (req, res) => {
       });
     });
 
-    // Dual Write: Only sync to Postgres if we are NOT already using it as primary
-    if (!isPostgresPrimary) {
-      try {
-        await retryOperation(async () => {
-          await UserPostgres.create({
-            userId: user.userId,
-            name: user.name,
-            email: user.email,
-            password: user.password,
-            phone: user.phone,
-            role: user.role
-          });
-        });
-        console.log('✅ User synced to PostgreSQL');
-      } catch (postgresError) {
-        console.error('⚠️ PostgreSQL sync failed (User create):', postgresError.message);
-        // Continue even if sync fails
-      }
-    }
+    // Postgres is primary; no dual-write needed
 
     // Create token
     const token = jwt.sign(

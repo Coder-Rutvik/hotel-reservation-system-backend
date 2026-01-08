@@ -1,4 +1,5 @@
-const Room = require('../models/mysql/Room');
+const { RoomPostgres } = require('../models/postgresql');
+const Room = RoomPostgres;
 const { Sequelize, Op } = require('sequelize');
 
 // @desc    Get all rooms

@@ -15,10 +15,13 @@ const adminRoutes = require('./routes/adminRoutes');
 const errorHandler = require('./middleware/errorHandler');
 const loggerMiddleware = require('./middleware/logger');
 
+// DB connections (Postgres-only)
+const dbConnections = require('./config/database');
+
 const app = express();
 
-// Trust proxy - MUST be before rate limiter
-app.set('trust proxy', 1); // Trust first proxy (Render's proxy)
+
+app.set('trust proxy', 1); 
 
 // Security middleware
 app.use(helmet());
@@ -54,15 +57,8 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('combined'));
 }
 
-// Custom logger middleware (Only if MongoDB is connected)
-const mongoose = require('mongoose');
-app.use((req, res, next) => {
-  if (mongoose.connection.readyState === 1) {
-    loggerMiddleware(req, res, next);
-  } else {
-    next();
-  }
-});
+// Custom logger middleware (Postgres-only setup)
+app.use(loggerMiddleware);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -70,8 +66,6 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
-  const dbConnections = require('./config/db-connections');
-
   try {
     const dbStatus = await dbConnections.checkAllConnections();
 
@@ -82,9 +76,7 @@ app.get('/api/health', async (req, res) => {
       version: '1.0.0',
       environment: process.env.NODE_ENV || 'development',
       databases: {
-        mysql: dbStatus.mysql.connected ? 'connected' : `disconnected (${dbStatus.mysql.error})`,
-        postgresql: dbStatus.postgresql.connected ? 'connected' : `disconnected (${dbStatus.postgresql.error})`,
-        mongodb: dbStatus.mongodb.connected ? 'connected' : `disconnected (${dbStatus.mongodb.error})`
+        postgresql: dbStatus.postgresql.connected ? 'connected' : `disconnected (${dbStatus.postgresql.error})`
       },
       endpoints: {
         auth: '/api/auth',

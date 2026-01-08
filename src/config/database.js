@@ -1,34 +1,40 @@
-const mysql = require('./mysql');
+// Postgres connection helper — single source of truth
 const postgresql = require('./postgresql');
-const mongodb = require('./mongodb');
 
-const connectDatabases = async () => {
+const connect = async () => {
   try {
-    // Connect to MySQL
-    await mysql.authenticate();
-    console.log('✅ MySQL connected successfully');
-    
-    // Connect to PostgreSQL
-    try {
-      await postgresql.authenticate();
-      console.log('✅ PostgreSQL connected successfully');
-    } catch (postgresError) {
-      console.warn('⚠️  PostgreSQL connection failed (continuing):', postgresError.message);
-    }
-    
-    // Connect to MongoDB
-    await mongodb.connect();
-    console.log('✅ MongoDB connected successfully');
-    
-    return {
-      mysql,
-      postgresql,
-      mongodb
-    };
+    await postgresql.authenticate();
+    console.log('✅ PostgreSQL connected successfully');
+    return postgresql;
   } catch (error) {
-    console.error('❌ Database connection failed:', error);
+    console.error('❌ PostgreSQL connection failed:', error.message || error);
     process.exit(1);
   }
 };
 
-module.exports = connectDatabases;
+const checkAllConnections = async () => {
+  const status = { postgresql: { connected: false, error: null } };
+  try {
+    await postgresql.authenticate();
+    status.postgresql.connected = true;
+  } catch (err) {
+    status.postgresql.error = err.message;
+  }
+  return status;
+};
+
+const closeAllConnections = async () => {
+  try {
+    await postgresql.close();
+    return [{ db: 'PostgreSQL', status: 'closed' }];
+  } catch (err) {
+    return [{ db: 'PostgreSQL', status: 'error', error: err.message }];
+  }
+};
+
+module.exports = {
+  postgresql,
+  connect,
+  checkAllConnections,
+  closeAllConnections
+};

@@ -1,10 +1,10 @@
 require('dotenv').config();
-const sequelize = require('../config/mysql');
+const sequelize = require('../config/postgresql');
 
-// Import models
-const User = require('../models/mysql/User');
-const Room = require('../models/mysql/Room');
-const Booking = require('../models/mysql/Booking');
+// Import models (PostgreSQL)
+const User = require('../models/postgresql/User');
+const Room = require('../models/postgresql/Room');
+const Booking = require('../models/postgresql/Booking');
 
 const seedDatabase = async () => {
   try {
