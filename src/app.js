@@ -1,4 +1,3 @@
-// ✅ FIXED: backend/src/app.js
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -16,7 +15,7 @@ const adminRoutes = require('./routes/adminRoutes');
 const errorHandler = require('./middleware/errorHandler');
 const loggerMiddleware = require('./middleware/logger');
 
-// DB connections
+// DB connections (Postgres-only)
 const dbConnections = require('./config/database');
 
 const app = express();
@@ -27,24 +26,9 @@ app.set('trust proxy', 1);
 app.use(helmet());
 app.use(compression());
 
-// ✅ FIXED CORS Configuration for Production
-const allowedOrigins = [
-  'http://localhost:3000',
-  'https://hotel-reservation-system-avvn.onrender.com',
-  'https://hotel-reservation-system-backend-6nf6.onrender.com'
-];
-
+// CORS configuration
 app.use(cors({
-  origin: function(origin, callback) {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true, // Allow all origins (dynamically reflects request origin)
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept']
@@ -58,7 +42,7 @@ const limiter = rateLimit({
   legacyHeaders: false,
   skip: (req) => {
     // Skip rate limiting for health checks
-    return req.path === '/api/health' || req.path === '/api/db-test';
+    return req.path === '/api/health';
   }
 });
 
@@ -71,7 +55,7 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('combined'));
 }
 
-// Custom logger middleware
+// Custom logger middleware (Postgres-only setup)
 app.use(loggerMiddleware);
 
 // Body parsing middleware
@@ -84,8 +68,6 @@ app.get('/', (req, res) => {
     success: true,
     message: '🏨 Hotel Reservation System API',
     version: '1.0.0',
-    status: 'running',
-    environment: process.env.NODE_ENV || 'development',
     endpoints: {
       health: 'GET /api/health',
       dbTest: 'GET /api/db-test',
@@ -98,25 +80,19 @@ app.get('/', (req, res) => {
         all: 'GET /api/rooms',
         available: 'GET /api/rooms/available',
         byFloor: 'GET /api/rooms/floor/:floorNumber',
-        createSample: 'POST /api/rooms/create-sample',
         seedRooms: 'POST /api/rooms/seed-rooms (PRIVATE)',
-        resetAll: 'POST /api/rooms/reset-all (PRIVATE)'
+        resetAll: 'POST /api/rooms/reset-all (PRIVATE)',
+        createSample: 'GET /api/rooms/create-sample (NEW!)'
       },
       bookings: {
         create: 'POST /api/bookings',
-        myBookings: 'GET /api/bookings/my-bookings',
-        cancel: 'PUT /api/bookings/:id/cancel'
-      },
-      admin: {
-        stats: 'GET /api/admin/stats (ADMIN)',
-        users: 'GET /api/admin/users (ADMIN)',
-        bookings: 'GET /api/admin/bookings (ADMIN)'
+        myBookings: 'GET /api/bookings/my-bookings'
       }
     },
     emergencyFixes: {
       autoCreateRooms: 'GET/POST /api/auto-fix-rooms',
       forceCreateRooms: 'GET/POST /api/force-create-rooms',
-      quickCreateRooms: 'GET/POST /api/create-rooms'
+      quickCreateRooms: 'GET /api/create-rooms (NEW!)'
     }
   });
 });
@@ -135,10 +111,13 @@ app.get('/api/health', async (req, res) => {
       databases: {
         postgresql: dbStatus.postgresql.connected ? 'connected' : `disconnected (${dbStatus.postgresql.error})`
       },
-      uptime: process.uptime(),
-      memory: {
-        used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + ' MB',
-        total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024) + ' MB'
+      endpoints: {
+        auth: '/api/auth',
+        bookings: '/api/bookings',
+        rooms: '/api/rooms',
+        admin: '/api/admin',
+        dbTest: '/api/db-test',
+        createRooms: '/api/create-rooms (NEW)'
       }
     });
   } catch (error) {
@@ -154,40 +133,15 @@ app.get('/api/health', async (req, res) => {
 app.get('/api/db-test', async (req, res) => {
   const { sequelize } = require('./config/database');
   try {
-    await sequelize.authenticate();
-    const [result] = await sequelize.query('SELECT NOW() as current_time, version() as pg_version');
-    
-    // Check rooms count
-    const [roomCount] = await sequelize.query('SELECT COUNT(*) as count FROM rooms');
-    const [userCount] = await sequelize.query('SELECT COUNT(*) as count FROM users');
-    const [bookingCount] = await sequelize.query('SELECT COUNT(*) as count FROM bookings');
-    
-    res.status(200).json({ 
-      success: true, 
-      message: 'Database connected successfully',
-      database: {
-        connected: true,
-        currentTime: result[0].current_time,
-        version: result[0].pg_version.split(' ')[1],
-        tables: {
-          rooms: parseInt(roomCount[0].count),
-          users: parseInt(userCount[0].count),
-          bookings: parseInt(bookingCount[0].count)
-        }
-      }
-    });
+    const [result] = await sequelize.query('SELECT 1+1 AS result');
+    res.status(200).json({ success: true, result });
   } catch (err) {
-    console.error('DB test failed:', err.message);
-    res.status(500).json({ 
-      success: false, 
-      error: err.message, 
-      code: err.code,
-      hint: 'Run POST /api/auto-fix-rooms to create tables'
-    });
+    console.error('DB test failed:', err && err.message);
+    res.status(500).json({ success: false, error: err.message, code: err.code });
   }
 });
 
-// ✅ EMERGENCY FIX HANDLERS
+// ✅ EMERGENCY FIX HANDLER FUNCTIONS
 const handleAutoFixRooms = async (req, res) => {
   try {
     const { sequelize } = require('./config/database');
@@ -195,13 +149,197 @@ const handleAutoFixRooms = async (req, res) => {
     console.log('🔄 AUTO-FIX: Checking and creating rooms...');
     
     // 1. Check if rooms table exists
-    let tableExists = false;
+    const [tables] = await sequelize.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables 
+        WHERE table_schema = 'public' 
+        AND table_name = 'rooms'
+      ) as table_exists
+    `);
+    
+    let message = '';
+    
+    if (!tables[0].table_exists) {
+      console.log('📝 Creating rooms table...');
+      await sequelize.query(`
+        CREATE TABLE rooms (
+          room_id SERIAL PRIMARY KEY,
+          room_number INTEGER UNIQUE NOT NULL,
+          floor INTEGER NOT NULL,
+          position INTEGER NOT NULL,
+          room_type VARCHAR(20) DEFAULT 'standard',
+          is_available BOOLEAN DEFAULT true,
+          base_price DECIMAL(10,2) DEFAULT 100.00,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      message += 'Created rooms table. ';
+    }
+    
+    // 2. Check room count
+    const [roomCount] = await sequelize.query('SELECT COUNT(*) FROM rooms');
+    const count = parseInt(roomCount[0].count);
+    
+    if (count === 0) {
+      console.log('🏨 Adding 20 sample rooms...');
+      
+      // Add 20 sample rooms
+      const sampleRooms = [
+        [101, 1, 1, 'standard', true, 100.00],
+        [102, 1, 2, 'standard', true, 100.00],
+        [103, 1, 3, 'standard', true, 100.00],
+        [104, 1, 4, 'standard', true, 100.00],
+        [105, 1, 5, 'standard', true, 100.00],
+        [106, 1, 6, 'standard', true, 100.00],
+        [107, 1, 7, 'standard', true, 100.00],
+        [108, 1, 8, 'deluxe', true, 150.00],
+        [109, 1, 9, 'deluxe', true, 150.00],
+        [110, 1, 10, 'deluxe', true, 150.00],
+        [201, 2, 1, 'standard', true, 100.00],
+        [202, 2, 2, 'standard', true, 100.00],
+        [203, 2, 3, 'standard', true, 100.00],
+        [204, 2, 4, 'standard', true, 100.00],
+        [205, 2, 5, 'standard', true, 100.00],
+        [206, 2, 6, 'standard', true, 100.00],
+        [207, 2, 7, 'standard', true, 100.00],
+        [208, 2, 8, 'standard', true, 100.00],
+        [209, 2, 9, 'standard', true, 100.00],
+        [210, 2, 10, 'standard', true, 100.00]
+      ];
+      
+      for (const room of sampleRooms) {
+        await sequelize.query(`
+          INSERT INTO rooms (room_number, floor, position, room_type, is_available, base_price)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT (room_number) DO NOTHING
+        `, room);
+      }
+      
+      message += 'Added 20 sample rooms. ';
+    }
+    
+    // 3. Final count
+    const [finalCount] = await sequelize.query('SELECT COUNT(*) FROM rooms');
+    const [availableCount] = await sequelize.query('SELECT COUNT(*) FROM rooms WHERE is_available = true');
+    
+    res.json({
+      success: true,
+      message: message || 'Rooms already exist',
+      rooms: {
+        total: parseInt(finalCount[0].count),
+        available: parseInt(availableCount[0].count)
+      },
+      nextStep: 'Now try: GET /api/rooms or POST /api/bookings'
+    });
+    
+  } catch (error) {
+    console.error('Auto-fix error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      sql: error.sql
+    });
+  }
+};
+
+const handleForceCreateRooms = async (req, res) => {
+  try {
+    const { sequelize } = require('./config/database');
+    
+    console.log('💥 FORCE CREATING ROOMS...');
+    
+    // 1. Drop and recreate table
+    await sequelize.query('DROP TABLE IF EXISTS rooms CASCADE');
+    
+    await sequelize.query(`
+      CREATE TABLE rooms (
+        room_id SERIAL PRIMARY KEY,
+        room_number INTEGER UNIQUE NOT NULL,
+        floor INTEGER NOT NULL,
+        position INTEGER NOT NULL,
+        room_type VARCHAR(20) DEFAULT 'standard',
+        is_available BOOLEAN DEFAULT true,
+        base_price DECIMAL(10,2) DEFAULT 100.00,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // 2. Add 97 rooms as per specification
+    const rooms = [];
+    
+    // Floors 1-9: 10 rooms each
+    for (let floor = 1; floor <= 9; floor++) {
+      for (let position = 1; position <= 10; position++) {
+        const roomNumber = (floor * 100) + position;
+        rooms.push({
+          room_number: roomNumber,
+          floor: floor,
+          position: position,
+          room_type: floor >= 8 ? 'deluxe' : 'standard',
+          is_available: true,
+          base_price: floor >= 8 ? 150.00 : 100.00
+        });
+      }
+    }
+    
+    // Floor 10: 7 rooms
+    for (let position = 1; position <= 7; position++) {
+      const roomNumber = 1000 + position;
+      rooms.push({
+        room_number: roomNumber,
+        floor: 10,
+        position: position,
+        room_type: 'suite',
+        is_available: true,
+        base_price: 200.00
+      });
+    }
+    
+    // 3. Insert all rooms
+    for (const room of rooms) {
+      await sequelize.query(`
+        INSERT INTO rooms (room_number, floor, position, room_type, is_available, base_price)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `, [room.room_number, room.floor, room.position, room.room_type, room.is_available, room.base_price]);
+    }
+    
+    const [count] = await sequelize.query('SELECT COUNT(*) FROM rooms');
+    
+    res.json({
+      success: true,
+      message: `FORCE CREATED ${rooms.length} ROOMS SUCCESSFULLY`,
+      rooms: {
+        total: parseInt(count[0].count),
+        floors: '1-10',
+        specification: 'Floors 1-9: 10 rooms each, Floor 10: 7 rooms'
+      },
+      action: 'APPLICATION IS NOW 100% READY FOR BOOKINGS!'
+    });
+    
+  } catch (error) {
+    console.error('Force create error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// ✅ NEW: Quick Room Creation Endpoint
+const handleQuickCreateRooms = async (req, res) => {
+  try {
+    const { sequelize } = require('./config/database');
+    
+    console.log('🏨 Quick room creation requested...');
+    
+    // Create rooms table if not exists
     try {
       await sequelize.query('SELECT 1 FROM rooms LIMIT 1');
-      tableExists = true;
       console.log('✅ Rooms table exists');
-    } catch (err) {
-      if (err.message.includes('does not exist') || err.code === '42P01') {
+    } catch (error) {
+      if (error.message.includes('does not exist')) {
         console.log('📝 Creating rooms table...');
         await sequelize.query(`
           CREATE TABLE rooms (
@@ -217,71 +355,73 @@ const handleAutoFixRooms = async (req, res) => {
           )
         `);
         console.log('✅ Rooms table created');
-        tableExists = true;
       }
     }
     
-    // 2. Check room count
-    const [roomCount] = await sequelize.query('SELECT COUNT(*) as count FROM rooms');
-    const count = parseInt(roomCount[0].count);
+    // Create sample rooms
+    const sampleRooms = [
+      [101, 1, 1, 'standard', 100.00, true],
+      [102, 1, 2, 'standard', 100.00, true],
+      [103, 1, 3, 'standard', 100.00, true],
+      [104, 1, 4, 'standard', 100.00, true],
+      [105, 1, 5, 'standard', 100.00, true],
+      [106, 1, 6, 'standard', 100.00, true],
+      [107, 1, 7, 'standard', 100.00, true],
+      [108, 1, 8, 'deluxe', 150.00, true],
+      [109, 1, 9, 'deluxe', 150.00, true],
+      [110, 1, 10, 'deluxe', 150.00, true],
+      [201, 2, 1, 'standard', 100.00, true],
+      [202, 2, 2, 'standard', 100.00, true],
+      [203, 2, 3, 'standard', 100.00, true],
+      [204, 2, 4, 'standard', 100.00, true],
+      [205, 2, 5, 'standard', 100.00, true],
+      [206, 2, 6, 'standard', 100.00, true],
+      [207, 2, 7, 'standard', 100.00, true],
+      [208, 2, 8, 'standard', 100.00, true],
+      [209, 2, 9, 'standard', 100.00, true],
+      [210, 2, 10, 'standard', 100.00, true]
+    ];
     
-    let message = '';
-    
-    if (count === 0) {
-      console.log('🏨 Adding 20 sample rooms...');
-      
-      // Add 20 sample rooms
-      await sequelize.query(`
-        INSERT INTO rooms (room_number, floor, position, room_type, base_price, is_available) VALUES
-        (101, 1, 1, 'standard', 100.00, true),
-        (102, 1, 2, 'standard', 100.00, true),
-        (103, 1, 3, 'standard', 100.00, true),
-        (104, 1, 4, 'standard', 100.00, true),
-        (105, 1, 5, 'standard', 100.00, true),
-        (106, 1, 6, 'standard', 100.00, true),
-        (107, 1, 7, 'standard', 100.00, true),
-        (108, 1, 8, 'deluxe', 150.00, true),
-        (109, 1, 9, 'deluxe', 150.00, true),
-        (110, 1, 10, 'deluxe', 150.00, true),
-        (201, 2, 1, 'standard', 100.00, true),
-        (202, 2, 2, 'standard', 100.00, true),
-        (203, 2, 3, 'standard', 100.00, true),
-        (204, 2, 4, 'standard', 100.00, true),
-        (205, 2, 5, 'standard', 100.00, true),
-        (206, 2, 6, 'standard', 100.00, true),
-        (207, 2, 7, 'standard', 100.00, true),
-        (208, 2, 8, 'standard', 100.00, true),
-        (209, 2, 9, 'standard', 100.00, true),
-        (210, 2, 10, 'standard', 100.00, true)
-        ON CONFLICT (room_number) DO NOTHING
-      `);
-      
-      message = 'Created rooms table and added 20 sample rooms';
-    } else {
-      message = `Rooms already exist (${count} rooms found)`;
+    let createdCount = 0;
+    for (const room of sampleRooms) {
+      try {
+        await sequelize.query(`
+          INSERT INTO rooms (room_number, floor, position, room_type, base_price, is_available)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT (room_number) DO NOTHING
+        `, room);
+        createdCount++;
+      } catch (err) {
+        console.log(`Room ${room[0]} already exists`);
+      }
     }
     
-    // 3. Final count
-    const [finalCount] = await sequelize.query('SELECT COUNT(*) FROM rooms');
+    const [totalCount] = await sequelize.query('SELECT COUNT(*) FROM rooms');
     const [availableCount] = await sequelize.query('SELECT COUNT(*) FROM rooms WHERE is_available = true');
     
     res.json({
       success: true,
-      message: message,
+      message: `Quick room creation complete. ${createdCount} rooms created.`,
       rooms: {
-        total: parseInt(finalCount[0].count),
+        total: parseInt(totalCount[0].count),
         available: parseInt(availableCount[0].count),
-        occupied: parseInt(finalCount[0].count) - parseInt(availableCount[0].count)
+        occupied: parseInt(totalCount[0].count) - parseInt(availableCount[0].count)
       },
-      nextStep: 'Now try: GET /api/rooms or POST /api/bookings'
+      nextSteps: [
+        'GET /api/rooms - See all rooms',
+        'GET /api/rooms/available - See available rooms',
+        'POST /api/auth/register - Register user',
+        'POST /api/auth/login - Login',
+        'POST /api/bookings - Book rooms'
+      ]
     });
     
   } catch (error) {
-    console.error('Auto-fix error:', error);
+    console.error('Quick room creation failed:', error);
     res.status(500).json({
       success: false,
-      message: error.message,
-      hint: 'Check database connection and permissions'
+      message: 'Failed to create rooms',
+      error: error.message
     });
   }
 };
@@ -289,10 +429,13 @@ const handleAutoFixRooms = async (req, res) => {
 // ✅ EMERGENCY FIX ROUTES
 app.get('/api/auto-fix-rooms', handleAutoFixRooms);
 app.post('/api/auto-fix-rooms', handleAutoFixRooms);
-app.get('/api/create-rooms', handleAutoFixRooms);
-app.post('/api/create-rooms', handleAutoFixRooms);
-app.get('/api/force-create-rooms', handleAutoFixRooms);
-app.post('/api/force-create-rooms', handleAutoFixRooms);
+
+app.get('/api/force-create-rooms', handleForceCreateRooms);
+app.post('/api/force-create-rooms', handleForceCreateRooms);
+
+// ✅ NEW: Quick room creation endpoint
+app.get('/api/create-rooms', handleQuickCreateRooms);
+app.post('/api/create-rooms', handleQuickCreateRooms);
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -305,7 +448,22 @@ app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
     message: `Route ${req.originalUrl} not found`,
-    suggestion: 'Visit GET / to see all available endpoints'
+    availableRoutes: [
+      'GET    /',
+      'GET    /api/health',
+      'GET    /api/db-test',
+      'GET/POST /api/auto-fix-rooms (EMERGENCY)',
+      'GET/POST /api/force-create-rooms (EMERGENCY)',
+      'GET/POST /api/create-rooms (QUICK FIX)',
+      'POST   /api/auth/register',
+      'POST   /api/auth/login',
+      'GET    /api/auth/me',
+      'GET    /api/rooms',
+      'GET    /api/rooms/available',
+      'POST   /api/bookings',
+      'GET    /api/bookings/my-bookings',
+      'GET    /api/admin/stats (admin only)'
+    ]
   });
 });
 
