@@ -7,6 +7,10 @@ let sequelizeConfig = {};
 if (process.env.DATABASE_URL) {
   // Use DATABASE_URL if available (Render, Railway, etc.)
   console.log('🔌 Using DATABASE_URL for PostgreSQL connection...');
+  
+  // Check if this is Render PostgreSQL (oregon-postgres.render.com)
+  const isRender = process.env.DATABASE_URL.includes('render.com');
+  
   sequelizeConfig = {
     dialect: 'postgres',
     logging: process.env.NODE_ENV === 'development' ? console.log : false,
@@ -17,7 +21,7 @@ if (process.env.DATABASE_URL) {
       idle: 10000
     },
     dialectOptions: {
-      ssl: process.env.PG_SSL === 'true' ? {
+      ssl: isRender || process.env.PG_SSL === 'true' ? {
         require: true,
         rejectUnauthorized: false
       } : false
@@ -47,12 +51,6 @@ if (process.env.DATABASE_URL) {
       min: 0,
       acquire: 30000,
       idle: 10000
-    },
-    dialectOptions: {
-      ssl: process.env.PG_SSL === 'true' ? {
-        require: true,
-        rejectUnauthorized: false
-      } : false
     }
   };
 
@@ -70,7 +68,6 @@ if (process.env.DATABASE_URL) {
       dialect: dbConfig.dialect,
       logging: dbConfig.logging,
       pool: dbConfig.pool,
-      dialectOptions: dbConfig.dialectOptions,
       define: {
         timestamps: true,
         underscored: true
@@ -251,27 +248,30 @@ const checkConnection = async () => {
   try {
     await sequelize.authenticate();
     
-    // Also check if users table exists
-    try {
-      await sequelize.query('SELECT 1 FROM users LIMIT 1');
-      return { 
-        connected: true, 
-        tables: { users: true }
-      };
-    } catch (tableError) {
-      return { 
-        connected: true, 
-        tables: { users: false },
-        error: 'Users table missing'
-      };
-    }
+    return { 
+      connected: true,
+      message: 'PostgreSQL connected successfully'
+    };
   } catch (error) {
+    console.error('❌ PostgreSQL connection check failed:', error.message);
     return { 
       connected: false, 
-      error: error.message,
-      details: error
+      error: error.message
     };
   }
+};
+
+// For backward compatibility
+const checkAllConnections = async () => {
+  const status = await checkConnection();
+  
+  return {
+    postgresql: {
+      connected: status.connected,
+      error: status.error || undefined,
+      message: status.message
+    }
+  };
 };
 
 // Close all connections
@@ -282,14 +282,11 @@ const close = async () => {
   } catch (error) {
     return { 
       closed: false, 
-      error: error.message,
-      details: error
+      error: error.message
     };
   }
 };
 
-// For backward compatibility
-const checkAllConnections = checkConnection;
 const closeAllConnections = async () => {
   const result = await close();
   return [{
@@ -310,7 +307,7 @@ module.exports = {
   
   // For backward compatibility
   postgresql: sequelize,
-  sequelizePostgres: sequelize, // ✅ CRITICAL FIX: Added this export
+  sequelizePostgres: sequelize,
   
   checkAllConnections,
   closeAllConnections,

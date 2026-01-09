@@ -1,7 +1,8 @@
+// src/models/Booking.js - UPDATED
 const { DataTypes } = require('sequelize');
-const { sequelizePostgres } = require('../config/database');
+const { sequelize } = require('../config/database');
 
-const BookingPostgres = sequelizePostgres.define('Booking', {
+const BookingPostgres = sequelize.define('Booking', {
   bookingId: {
     type: DataTypes.UUID,
     defaultValue: DataTypes.UUIDV4,
@@ -74,4 +75,3 @@ const BookingPostgres = sequelizePostgres.define('Booking', {
 });
 
 module.exports = BookingPostgres;
-

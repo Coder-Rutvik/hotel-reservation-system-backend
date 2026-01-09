@@ -11,7 +11,7 @@ const bookRooms = async (req, res) => {
 
     console.log('📅 Booking attempt by user:', userId, { numRooms, checkInDate, checkOutDate });
 
-    // ✅ SIMPLE VALIDATION
+    // Validation
     if (!numRooms || numRooms < 1 || numRooms > 5) {
       return res.status(400).json({
         success: false,
@@ -45,17 +45,15 @@ const bookRooms = async (req, res) => {
       });
     }
 
-    // ✅ FIND AVAILABLE ROOMS
+    // Find available rooms
     console.log('🔍 Looking for available rooms...');
     
-    // First, ensure we have rooms
     const roomCount = await Room.count();
     if (roomCount === 0) {
       console.log('⚠️ No rooms found in database!');
       return res.status(400).json({
         success: false,
-        message: 'No rooms available in the system.',
-        suggestion: 'Use POST /api/auto-fix-rooms to create rooms'
+        message: 'No rooms available in the system.'
       });
     }
     
@@ -73,11 +71,11 @@ const bookRooms = async (req, res) => {
       });
     }
 
-    // ✅ SIMPLE SELECTION: Take first N available rooms
+    // Take first N available rooms
     const selectedRooms = allAvailableRooms.slice(0, numRooms);
     const roomNumbers = selectedRooms.map(room => room.roomNumber);
     
-    // ✅ CALCULATE TRAVEL TIME
+    // Calculate travel time
     let travelTime = 0;
     if (selectedRooms.length > 1) {
       const firstFloor = selectedRooms[0].floor;
@@ -93,7 +91,7 @@ const bookRooms = async (req, res) => {
       }
     }
 
-    // ✅ CALCULATE PRICE
+    // Calculate price
     const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
     let totalPrice = 0;
     selectedRooms.forEach(room => {
@@ -109,7 +107,7 @@ const bookRooms = async (req, res) => {
 
     totalPrice = parseFloat(totalPrice.toFixed(2));
 
-    // ✅ CREATE BOOKING
+    // Create booking
     console.log('💾 Creating booking...');
     const booking = await Booking.create({
       userId,
@@ -123,7 +121,7 @@ const bookRooms = async (req, res) => {
       paymentStatus: 'pending'
     });
 
-    // ✅ UPDATE ROOM AVAILABILITY
+    // Update room availability
     await Room.update(
       { isAvailable: false },
       {
@@ -159,18 +157,10 @@ const bookRooms = async (req, res) => {
   } catch (error) {
     console.error('❌ Booking error:', error);
     
-    let errorMessage = 'Server error during booking';
-    if (error.name === 'SequelizeDatabaseError') {
-      errorMessage = 'Database error. Please check if tables exist.';
-    } else if (error.name === 'SequelizeConnectionError') {
-      errorMessage = 'Database connection failed.';
-    }
-    
     res.status(500).json({
       success: false,
-      message: errorMessage,
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-      suggestion: 'Try POST /api/auto-fix-rooms to setup database'
+      message: 'Server error during booking',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -183,27 +173,37 @@ const getUserBookings = async (req, res) => {
     const userId = req.user.userId;
 
     const bookings = await Booking.findAll({
-      where: { userId },
-      order: [['createdAt', 'DESC']],
-      include: [
-        {
-          model: User,
-          as: 'user',
-          attributes: ['name', 'email']
-        }
-      ]
+      where: { userId: userId },
+      order: [['createdAt', 'DESC']]
+    });
+
+    console.log(`✅ Found ${bookings.length} bookings for user ${userId}`);
+
+    // Get user details separately
+    const user = await User.findByPk(userId, {
+      attributes: ['name', 'email', 'phone']
+    });
+
+    // Add user info to bookings
+    const bookingsWithUser = bookings.map(booking => {
+      const bookingData = booking.toJSON();
+      return {
+        ...bookingData,
+        user: user || { name: 'User', email: 'N/A' }
+      };
     });
 
     res.json({
       success: true,
       count: bookings.length,
-      data: bookings
+      data: bookingsWithUser
     });
   } catch (error) {
     console.error('Get bookings error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: 'Failed to fetch bookings',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -219,15 +219,8 @@ const getBookingById = async (req, res) => {
     const booking = await Booking.findOne({
       where: {
         bookingId: id,
-        userId
-      },
-      include: [
-        {
-          model: User,
-          as: 'user',
-          attributes: ['name', 'email']
-        }
-      ]
+        userId: userId
+      }
     });
 
     if (!booking) {
@@ -237,9 +230,16 @@ const getBookingById = async (req, res) => {
       });
     }
 
+    const user = await User.findByPk(userId, {
+      attributes: ['name', 'email']
+    });
+
+    const bookingData = booking.toJSON();
+    bookingData.user = user || { name: 'User', email: 'N/A' };
+
     res.json({
       success: true,
-      data: booking
+      data: bookingData
     });
   } catch (error) {
     console.error('Get booking error:', error);
@@ -261,7 +261,7 @@ const cancelBooking = async (req, res) => {
     const booking = await Booking.findOne({
       where: {
         bookingId: id,
-        userId
+        userId: userId
       }
     });
 
@@ -314,15 +314,15 @@ const getBookingStats = async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    const totalBookings = await Booking.count({ where: { userId } });
+    const totalBookings = await Booking.count({ where: { userId: userId } });
     const confirmedBookings = await Booking.count({
-      where: { userId, status: 'confirmed' }
+      where: { userId: userId, status: 'confirmed' }
     });
     const cancelledBookings = await Booking.count({
-      where: { userId, status: 'cancelled' }
+      where: { userId: userId, status: 'cancelled' }
     });
     const totalSpent = await Booking.sum('totalPrice', {
-      where: { userId, status: 'confirmed' }
+      where: { userId: userId, status: 'confirmed' }
     }) || 0;
 
     const thirtyDaysAgo = new Date();
@@ -330,7 +330,7 @@ const getBookingStats = async (req, res) => {
 
     const recentBookings = await Booking.count({
       where: {
-        userId,
+        userId: userId,
         createdAt: { [Op.gte]: thirtyDaysAgo }
       }
     });

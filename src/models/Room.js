@@ -1,7 +1,8 @@
+// src/models/Room.js - UPDATED
 const { DataTypes } = require('sequelize');
-const { sequelizePostgres } = require('../config/database');
+const { sequelize } = require('../config/database');  // ✅ CORRECT PATH
 
-const RoomPostgres = sequelizePostgres.define('Room', {
+const RoomPostgres = sequelize.define('Room', {
   roomId: {
     type: DataTypes.INTEGER,
     primaryKey: true,
@@ -54,4 +55,3 @@ const RoomPostgres = sequelizePostgres.define('Room', {
 });
 
 module.exports = RoomPostgres;
-

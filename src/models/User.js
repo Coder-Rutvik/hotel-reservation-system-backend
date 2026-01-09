@@ -1,10 +1,9 @@
-// src/models/User.js - Line 2 चा path बदला
-const { sequelizePostgres } = require('../config/database');  // ✅ CHANGE THIS
-// पासून: const { sequelizePostgres } = require('../../config/database');
+// src/models/User.js - FIXED PATH
+const { sequelize } = require('../config/database');  
 const { DataTypes } = require('sequelize');
 const bcrypt = require('bcryptjs');
 
-const UserPostgres = sequelizePostgres.define('User', {
+const UserPostgres = sequelize.define('User', {
   userId: {
     type: DataTypes.INTEGER,
     primaryKey: true,

@@ -1,16 +1,12 @@
 // src/controllers/adminController.js - UPDATED
 const { Sequelize, Op } = require('sequelize');
-const { sequelize } = require('../config/database'); // ✅ ADD THIS
+const { sequelize } = require('../config/database');
 
 // ✅ CORRECT: Import from models/index.js
 const db = require('../models');
-const UserPostgres = db.UserPostgres || db.User;
-const BookingPostgres = db.BookingPostgres || db.Booking;
-const RoomPostgres = db.RoomPostgres || db.Room;
-
-const User = UserPostgres;
-const Booking = BookingPostgres;
-const Room = RoomPostgres;
+const User = db.User;
+const Booking = db.Booking;
+const Room = db.Room;
 
 // @desc    Get all users
 // @route   GET /api/admin/users
@@ -56,20 +52,27 @@ const getAllUsers = async (req, res) => {
 const getAllBookings = async (req, res) => {
   try {
     const bookings = await Booking.findAll({
-      include: [
-        {
-          model: User,
-          as: 'user',
-          attributes: ['name', 'email', 'userId']
-        }
-      ],
       order: [['createdAt', 'DESC']]
     });
+
+    // Get user details for each booking
+    const bookingsWithUsers = await Promise.all(
+      bookings.map(async (booking) => {
+        const bookingData = booking.toJSON();
+        const user = await User.findByPk(booking.userId, {
+          attributes: ['name', 'email', 'userId']
+        });
+        return {
+          ...bookingData,
+          user: user || { name: 'User', email: 'N/A', userId: booking.userId }
+        };
+      })
+    );
 
     res.json({
       success: true,
       count: bookings.length,
-      data: bookings
+      data: bookingsWithUsers
     });
   } catch (error) {
     console.error('Get bookings error:', error);
