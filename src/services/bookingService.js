@@ -1,5 +1,5 @@
 const { Sequelize, Op } = require('sequelize');
-const { RoomPostgres, BookingPostgres, UserPostgres } = require('../models/postgresql');
+const { RoomPostgres, BookingPostgres, UserPostgres } = require('../models');
 const algorithmService = require('./algorithmService');
 
 const Room = RoomPostgres;

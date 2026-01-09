@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { sequelize } = require('./src/config/database');
-const { RoomPostgres, UserPostgres, BookingPostgres } = require('./src/models/postgresql');
+const { RoomPostgres, UserPostgres, BookingPostgres } = require('./src/models');
 const { Op } = require('sequelize');
 
 async function seedDatabase() {

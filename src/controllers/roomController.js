@@ -1,4 +1,4 @@
-const { RoomPostgres } = require('../models/postgresql');
+const { RoomPostgres } = require('../models');
 const Room = RoomPostgres;
 const { Sequelize, Op } = require('sequelize');
 
@@ -234,7 +234,7 @@ const generateRandomOccupancy = async (req, res) => {
 // @access  Private
 const resetAllBookings = async (req, res) => {
   try {
-    const { BookingPostgres } = require('../models/postgresql');
+    const { BookingPostgres } = require('../models');
 
     // Cancel all active bookings
     await BookingPostgres.update(

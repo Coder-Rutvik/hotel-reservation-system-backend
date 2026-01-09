@@ -1,5 +1,5 @@
 const { Sequelize, Op } = require('sequelize');
-const { UserPostgres, BookingPostgres, RoomPostgres } = require('../models/postgresql');
+const { UserPostgres, BookingPostgres, RoomPostgres } = require('../models');
 
 const User = UserPostgres;
 const Booking = BookingPostgres;

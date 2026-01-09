@@ -1,4 +1,4 @@
-const { BookingPostgres, UserPostgres, RoomPostgres } = require('../models/postgresql');
+const { BookingPostgres, UserPostgres, RoomPostgres } = require('../models');
 const { Op } = require('sequelize');
 const algorithmService = require('../services/algorithmService');
 const bookingService = require('../services/bookingService');

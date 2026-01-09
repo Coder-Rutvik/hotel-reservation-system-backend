@@ -4,7 +4,71 @@ const { sequelize } = require('./src/config/database');
 console.log('🚀 Starting Hotel Reservation System Backend...');
 console.log('===========================================');
 
-// Database setup function - AUTO CREATES TABLES
+// Manual table creation function
+async function createTablesManually() {
+  try {
+    console.log('🛠️ Creating tables manually...');
+    
+    // Create users table FIRST
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        user_id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        email VARCHAR(100) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        phone VARCHAR(20),
+        role VARCHAR(10) DEFAULT 'user',
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('✅ Users table created');
+    
+    // Create rooms table
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS rooms (
+        room_id SERIAL PRIMARY KEY,
+        room_number INTEGER UNIQUE NOT NULL,
+        floor INTEGER NOT NULL,
+        position INTEGER NOT NULL,
+        room_type VARCHAR(20) DEFAULT 'standard',
+        is_available BOOLEAN DEFAULT true,
+        base_price DECIMAL(10,2) DEFAULT 100.00,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('✅ Rooms table created');
+    
+    // Create bookings table
+    await sequelize.query(`
+      CREATE TABLE IF NOT EXISTS bookings (
+        booking_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id INTEGER NOT NULL REFERENCES users(user_id),
+        rooms JSONB NOT NULL,
+        total_rooms INTEGER NOT NULL,
+        travel_time INTEGER NOT NULL,
+        total_price DECIMAL(10,2) NOT NULL,
+        booking_date DATE DEFAULT CURRENT_DATE,
+        check_in_date DATE NOT NULL,
+        check_out_date DATE NOT NULL,
+        status VARCHAR(20) DEFAULT 'confirmed',
+        payment_status VARCHAR(20) DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    console.log('✅ Bookings table created');
+    
+    return true;
+  } catch (error) {
+    console.error('❌ Manual table creation failed:', error.message);
+    throw error;
+  }
+}
+
+// Database setup function
 async function setupDatabase() {
   try {
     console.log('🔌 Connecting to PostgreSQL...');
@@ -13,46 +77,114 @@ async function setupDatabase() {
     await sequelize.authenticate();
     console.log('✅ Database connected');
     
-    // IMPORTANT: Auto-create tables if they don't exist
-    console.log('🔄 Creating/verifying database tables...');
-    
-    // This creates tables if missing, doesn't drop existing data
-    await sequelize.sync({ alter: true });
-    console.log('✅ Database tables ready');
-    
-    // Check what tables were created
+    // FIRST: Check if users table exists
+    console.log('🔍 Checking for existing tables...');
     const [tables] = await sequelize.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public'
+      AND table_name IN ('users', 'rooms', 'bookings')
+      ORDER BY table_name
+    `);
+    
+    console.log(`📊 Found ${tables.length} existing tables`);
+    
+    // If users table doesn't exist, create all tables manually
+    const usersTableExists = tables.some(t => t.table_name === 'users');
+    
+    if (!usersTableExists) {
+      console.log('⚠️ Users table not found. Creating all tables...');
+      await createTablesManually();
+    } else {
+      console.log('✅ Users table exists. Checking others...');
+      
+      // Create missing tables
+      const existingTables = tables.map(t => t.table_name);
+      
+      if (!existingTables.includes('rooms')) {
+        console.log('📝 Creating rooms table...');
+        await sequelize.query(`
+          CREATE TABLE IF NOT EXISTS rooms (
+            room_id SERIAL PRIMARY KEY,
+            room_number INTEGER UNIQUE NOT NULL,
+            floor INTEGER NOT NULL,
+            position INTEGER NOT NULL,
+            room_type VARCHAR(20) DEFAULT 'standard',
+            is_available BOOLEAN DEFAULT true,
+            base_price DECIMAL(10,2) DEFAULT 100.00,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+        console.log('✅ Rooms table created');
+      }
+      
+      if (!existingTables.includes('bookings')) {
+        console.log('📝 Creating bookings table...');
+        await sequelize.query(`
+          CREATE TABLE IF NOT EXISTS bookings (
+            booking_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id INTEGER NOT NULL REFERENCES users(user_id),
+            rooms JSONB NOT NULL,
+            total_rooms INTEGER NOT NULL,
+            travel_time INTEGER NOT NULL,
+            total_price DECIMAL(10,2) NOT NULL,
+            booking_date DATE DEFAULT CURRENT_DATE,
+            check_in_date DATE NOT NULL,
+            check_out_date DATE NOT NULL,
+            status VARCHAR(20) DEFAULT 'confirmed',
+            payment_status VARCHAR(20) DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+        console.log('✅ Bookings table created');
+      }
+    }
+    
+    // Final verification
+    const [finalTables] = await sequelize.query(`
       SELECT table_name 
       FROM information_schema.tables 
       WHERE table_schema = 'public'
       ORDER BY table_name
     `);
     
-    console.log(`📊 Found ${tables.length} tables:`);
-    tables.forEach((table, index) => {
+    console.log(`📊 Final table count: ${finalTables.length}`);
+    finalTables.forEach((table, index) => {
       console.log(`   ${index + 1}. ${table.table_name}`);
     });
     
-    // If no tables, log warning (sync should have created them)
-    if (tables.length === 0) {
-      console.warn('⚠️ No tables found after sync. Seeding needed.');
-    } else {
-      console.log('✅ All tables are ready!');
+    // Check users table specifically
+    try {
+      const [userCount] = await sequelize.query('SELECT COUNT(*) FROM users');
+      console.log(`👥 Users table has ${userCount[0].count} records`);
+    } catch (e) {
+      console.log('⚠️ Could not count users:', e.message);
     }
     
     return true;
   } catch (error) {
     console.error('❌ Database setup failed:', error.message);
     
-    // If it's a connection error, we can still start server
-    if (error.message.includes('Connection') || error.message.includes('timeout')) {
-      console.log('⚠️ Starting with limited functionality (no database)');
+    // Last resort: try creating just users table
+    try {
+      console.log('🆘 Trying emergency users table creation...');
+      await sequelize.query(`
+        CREATE TABLE IF NOT EXISTS users (
+          user_id SERIAL PRIMARY KEY,
+          name VARCHAR(100),
+          email VARCHAR(100) UNIQUE,
+          password VARCHAR(255),
+          created_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+      console.log('✅ Emergency users table created');
+      return true;
+    } catch (emergencyError) {
+      console.error('❌ Emergency creation failed:', emergencyError.message);
       return false;
     }
-    
-    // For other errors, try to continue
-    console.log('⚠️ Continuing with potential database issues');
-    return false;
   }
 }
 
@@ -72,7 +204,7 @@ async function startServer() {
   
   console.log('===========================================\n');
   
-  // Setup database first (this creates tables automatically)
+  // Setup database first
   console.log('⚙️ Setting up database...');
   const dbReady = await setupDatabase();
   
@@ -99,17 +231,21 @@ async function startServer() {
     console.log('🎉 Server is ready and accepting requests!');
     console.log('===========================================\n');
     
-    // Quick self-test
-    console.log('🧪 Quick self-test (after 2 seconds)...');
+    // Quick self-test after 1 second
     setTimeout(async () => {
       try {
-        const response = await fetch(`http://localhost:${PORT}/api/health`);
-        const data = await response.json();
-        console.log(`   Health check: ${data.success ? '✅ OK' : '❌ Failed'}`);
+        // Test database connection
+        await sequelize.authenticate();
+        console.log('🧪 Database connection test: ✅ OK');
+        
+        // Test users table
+        const [result] = await sequelize.query('SELECT 1 FROM users LIMIT 1');
+        console.log(`🧪 Users table test: ${result ? '✅ OK' : '⚠️ No data'}`);
+        
       } catch (e) {
-        console.log(`   Health check: ❌ ${e.message}`);
+        console.log(`🧪 Self-test failed: ❌ ${e.message}`);
       }
-    }, 2000);
+    }, 1000);
   });
   
   // Graceful shutdown
@@ -118,7 +254,6 @@ async function startServer() {
     server.close(() => {
       console.log('✅ HTTP server closed');
       
-      // Try to close database connections
       sequelize.close()
         .then(() => console.log('✅ Database connections closed'))
         .catch(err => console.log('⚠️ Could not close database:', err.message))
@@ -128,7 +263,6 @@ async function startServer() {
         });
     });
     
-    // Force shutdown after 5 seconds
     setTimeout(() => {
       console.error('❌ Forcing shutdown after timeout');
       process.exit(1);
@@ -138,12 +272,8 @@ async function startServer() {
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
   
-  // Handle server errors
   server.on('error', (error) => {
     console.error('❌ Server error:', error.message);
-    if (error.code === 'EADDRINUSE') {
-      console.error(`⚠️ Port ${PORT} is already in use. Trying ${parseInt(PORT) + 1}...`);
-    }
   });
 }
 
@@ -155,17 +285,11 @@ process.on('unhandledRejection', (reason, promise) => {
 
 process.on('uncaughtException', (error) => {
   console.error('❌ Uncaught Exception:', error.message);
-  console.error('Stack:', error.stack);
-  
-  // Don't crash immediately, give time for logging
-  setTimeout(() => {
-    process.exit(1);
-  }, 1000);
+  setTimeout(() => process.exit(1), 1000);
 });
 
 // Start the application
 startServer().catch(error => {
   console.error('❌ Failed to start server:', error);
-  console.error('Stack:', error.stack);
   process.exit(1);
 });
