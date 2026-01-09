@@ -1,10 +1,5 @@
-const { BookingPostgres, UserPostgres, RoomPostgres } = require('../models');
+const { Booking, User, Room } = require('../models');
 const { Op } = require('sequelize');
-
-// Use Postgres models as primary
-const Booking = BookingPostgres;
-const User = UserPostgres;
-const Room = RoomPostgres;
 
 // @desc    Book rooms
 // @route   POST /api/bookings
@@ -50,14 +45,26 @@ const bookRooms = async (req, res) => {
       });
     }
 
-    // ✅ FIND AVAILABLE ROOMS (NO COMPLEX ALGORITHM)
+    // ✅ FIND AVAILABLE ROOMS
     console.log('🔍 Looking for available rooms...');
+    
+    // First, ensure we have rooms
+    const roomCount = await Room.count();
+    if (roomCount === 0) {
+      console.log('⚠️ No rooms found in database!');
+      return res.status(400).json({
+        success: false,
+        message: 'No rooms available in the system.',
+        suggestion: 'Use POST /api/auto-fix-rooms to create rooms'
+      });
+    }
+    
     const allAvailableRooms = await Room.findAll({
       where: { isAvailable: true },
       order: [['floor', 'ASC'], ['position', 'ASC']]
     });
 
-    console.log(`📊 Found ${allAvailableRooms.length} available rooms`);
+    console.log(`📊 Found ${allAvailableRooms.length} available rooms out of ${roomCount} total`);
 
     if (allAvailableRooms.length < numRooms) {
       return res.status(400).json({
@@ -70,21 +77,18 @@ const bookRooms = async (req, res) => {
     const selectedRooms = allAvailableRooms.slice(0, numRooms);
     const roomNumbers = selectedRooms.map(room => room.roomNumber);
     
-    // ✅ CALCULATE TRAVEL TIME (SIMPLE LOGIC)
+    // ✅ CALCULATE TRAVEL TIME
     let travelTime = 0;
     if (selectedRooms.length > 1) {
-      // Check if all rooms on same floor
       const firstFloor = selectedRooms[0].floor;
       const sameFloor = selectedRooms.every(room => room.floor === firstFloor);
       
       if (sameFloor) {
-        // All on same floor: calculate distance between positions
         const positions = selectedRooms.map(r => r.position);
         const maxPos = Math.max(...positions);
         const minPos = Math.min(...positions);
-        travelTime = (maxPos - minPos) * 2; // 2 minutes per room gap
+        travelTime = (maxPos - minPos) * 2;
       } else {
-        // Different floors: 3 minutes per room + 5 minutes per floor change
         travelTime = (selectedRooms.length * 3) + 5;
       }
     }
@@ -95,10 +99,9 @@ const bookRooms = async (req, res) => {
     selectedRooms.forEach(room => {
       let pricePerNight = parseFloat(room.basePrice);
       
-      // Weekend pricing
-      const checkInDay = checkIn.getDay(); // 0=Sunday, 5=Friday, 6=Saturday
+      const checkInDay = checkIn.getDay();
       if (checkInDay === 5 || checkInDay === 6) {
-        pricePerNight *= 1.2; // 20% weekend increase
+        pricePerNight *= 1.2;
       }
       
       totalPrice += pricePerNight * nights;
@@ -155,10 +158,19 @@ const bookRooms = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Booking error:', error);
+    
+    let errorMessage = 'Server error during booking';
+    if (error.name === 'SequelizeDatabaseError') {
+      errorMessage = 'Database error. Please check if tables exist.';
+    } else if (error.name === 'SequelizeConnectionError') {
+      errorMessage = 'Database connection failed.';
+    }
+    
     res.status(500).json({
       success: false,
-      message: 'Server error during booking',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: errorMessage,
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      suggestion: 'Try POST /api/auto-fix-rooms to setup database'
     });
   }
 };
@@ -270,7 +282,6 @@ const cancelBooking = async (req, res) => {
     booking.status = 'cancelled';
     await booking.save();
 
-    // Make rooms available again
     await Room.update(
       { isAvailable: true },
       {
@@ -314,7 +325,6 @@ const getBookingStats = async (req, res) => {
       where: { userId, status: 'confirmed' }
     }) || 0;
 
-    // Recent bookings (last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
