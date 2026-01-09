@@ -22,6 +22,30 @@ const retryOperation = async (operation, maxRetries = 3) => {
   }
 };
 
+// Helper to convert JWT_EXPIRE string to valid format
+const getJWTExpiresIn = () => {
+  const expire = process.env.JWT_EXPIRE || '7d';
+  
+  // If it's already a number, return as is
+  if (!isNaN(expire)) {
+    return parseInt(expire);
+  }
+  
+  // Convert string like '7d' to valid format
+  if (expire.endsWith('d')) {
+    const days = parseInt(expire);
+    return `${days}d`; // Keep as string like '7d'
+  }
+  
+  if (expire.endsWith('h')) {
+    const hours = parseInt(expire);
+    return `${hours}h`; // Keep as string like '24h'
+  }
+  
+  // Default to 7 days
+  return '7d';
+};
+
 // @desc    Register user
 // @route   POST /api/auth/register
 // @access  Public
@@ -69,13 +93,11 @@ const register = async (req, res) => {
       });
     });
 
-    // Postgres is primary; no dual-write needed
-
-    // Create token
+    // ✅ FIXED: Use correct expiresIn format
     const token = jwt.sign(
       { id: user.userId, email: user.email, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRE }
+      { expiresIn: getJWTExpiresIn() } // Using helper function
     );
 
     // Remove password from response
@@ -154,11 +176,11 @@ const login = async (req, res) => {
       });
     }
 
-    // Create token
+    // ✅ FIXED: Use correct expiresIn format
     const token = jwt.sign(
       { id: user.userId, email: user.email, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRE }
+      { expiresIn: getJWTExpiresIn() } // Using helper function
     );
 
     // Remove password from response
