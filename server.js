@@ -73,37 +73,34 @@ const createRoomsAutomatically = async () => {
     if (count === 0) {
       console.log('🏨 No rooms found. Creating 97 rooms...');
       
-      // Create 20 sample rooms for quick start (not 97)
-      const sampleRooms = [
-        [101, 1, 1, 'standard', 100.00, true],
-        [102, 1, 2, 'standard', 100.00, true],
-        [103, 1, 3, 'standard', 100.00, true],
-        [104, 1, 4, 'standard', 100.00, true],
-        [105, 1, 5, 'standard', 100.00, true],
-        [106, 1, 6, 'standard', 100.00, true],
-        [107, 1, 7, 'standard', 100.00, true],
-        [108, 1, 8, 'deluxe', 150.00, true],
-        [109, 1, 9, 'deluxe', 150.00, true],
-        [110, 1, 10, 'deluxe', 150.00, true],
-        [201, 2, 1, 'standard', 100.00, true],
-        [202, 2, 2, 'standard', 100.00, true],
-        [203, 2, 3, 'standard', 100.00, true],
-        [204, 2, 4, 'standard', 100.00, true],
-        [205, 2, 5, 'standard', 100.00, true],
-        [206, 2, 6, 'standard', 100.00, true],
-        [207, 2, 7, 'standard', 100.00, true],
-        [208, 2, 8, 'standard', 100.00, true],
-        [209, 2, 9, 'standard', 100.00, true],
-        [210, 2, 10, 'standard', 100.00, true]
-      ];
+      // CREATE 20 SAMPLE ROOMS ONLY - SIMPLE VERSION
+      console.log('Creating 20 sample rooms...');
       
-      for (const room of sampleRooms) {
-        await sequelize.query(`
-          INSERT INTO rooms (room_number, floor, position, room_type, base_price, is_available)
-          VALUES ($1, $2, $3, $4, $5, $6)
-          ON CONFLICT (room_number) DO NOTHING
-        `, room);
-      }
+      // Simple query without parameters
+      await sequelize.query(`
+        INSERT INTO rooms (room_number, floor, position, room_type, base_price, is_available) VALUES
+        (101, 1, 1, 'standard', 100.00, true),
+        (102, 1, 2, 'standard', 100.00, true),
+        (103, 1, 3, 'standard', 100.00, true),
+        (104, 1, 4, 'standard', 100.00, true),
+        (105, 1, 5, 'standard', 100.00, true),
+        (106, 1, 6, 'standard', 100.00, true),
+        (107, 1, 7, 'standard', 100.00, true),
+        (108, 1, 8, 'deluxe', 150.00, true),
+        (109, 1, 9, 'deluxe', 150.00, true),
+        (110, 1, 10, 'deluxe', 150.00, true),
+        (201, 2, 1, 'standard', 100.00, true),
+        (202, 2, 2, 'standard', 100.00, true),
+        (203, 2, 3, 'standard', 100.00, true),
+        (204, 2, 4, 'standard', 100.00, true),
+        (205, 2, 5, 'standard', 100.00, true),
+        (206, 2, 6, 'standard', 100.00, true),
+        (207, 2, 7, 'standard', 100.00, true),
+        (208, 2, 8, 'standard', 100.00, true),
+        (209, 2, 9, 'standard', 100.00, true),
+        (210, 2, 10, 'standard', 100.00, true)
+        ON CONFLICT (room_number) DO NOTHING
+      `);
       
       console.log('✅ Created 20 sample rooms');
     } else {
