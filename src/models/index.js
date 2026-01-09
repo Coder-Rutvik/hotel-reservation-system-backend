@@ -19,16 +19,13 @@ Booking.belongsTo(User, {
 
 // Export everything
 module.exports = {
-  // Database instance
   sequelize,
   Sequelize: require('sequelize'),
   
-  // Primary models
   User,
   Room,
   Booking,
   
-  // For backward compatibility
   UserPostgres: User,
   RoomPostgres: Room,
   BookingPostgres: Booking

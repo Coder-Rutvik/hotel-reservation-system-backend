@@ -5,10 +5,8 @@ require('dotenv').config();
 let sequelizeConfig = {};
 
 if (process.env.DATABASE_URL) {
-  // Use DATABASE_URL if available (Render, Railway, etc.)
   console.log('🔌 Using DATABASE_URL for PostgreSQL connection...');
   
-  // Check if this is Render PostgreSQL (oregon-postgres.render.com)
   const isRender = process.env.DATABASE_URL.includes('render.com');
   
   sequelizeConfig = {
@@ -32,11 +30,9 @@ if (process.env.DATABASE_URL) {
     }
   };
   
-  // Create sequelize instance with DATABASE_URL
   var sequelize = new Sequelize(process.env.DATABASE_URL, sequelizeConfig);
   
 } else {
-  // Fallback to individual variables (for local development)
   console.log('🔌 Using individual environment variables for PostgreSQL connection...');
   const dbConfig = {
     database: process.env.POSTGRES_DATABASE || 'hotel_reservation_db',
@@ -57,7 +53,6 @@ if (process.env.DATABASE_URL) {
   console.log(`   Host: ${dbConfig.host}:${dbConfig.port}`);
   console.log(`   Database: ${dbConfig.database}`);
 
-  // Initialize Sequelize
   var sequelize = new Sequelize(
     dbConfig.database,
     dbConfig.username,
@@ -76,22 +71,19 @@ if (process.env.DATABASE_URL) {
   );
 }
 
-// ✅ NEW: Function to ensure users table exists
+// Function to ensure users table exists
 const ensureUsersTable = async () => {
   try {
     console.log('🔍 Checking if users table exists...');
     
-    // First try to query the table
     try {
       await sequelize.query('SELECT 1 FROM users LIMIT 1');
       console.log('✅ Users table exists');
       return true;
     } catch (queryError) {
-      // If error contains "does not exist" or code 42P01, table doesn't exist
       if (queryError.message.includes('does not exist') || queryError.code === '42P01') {
         console.log('📝 Users table not found. Creating...');
         
-        // Create users table
         const createTableSQL = `
           CREATE TABLE users (
             user_id SERIAL PRIMARY KEY,
@@ -117,7 +109,6 @@ const ensureUsersTable = async () => {
   } catch (error) {
     console.error('❌ ensureUsersTable failed:', error.message);
     
-    // Fallback: try simpler table creation
     try {
       console.log('🔄 Trying simple table creation...');
       const simpleSQL = `
@@ -139,15 +130,13 @@ const ensureUsersTable = async () => {
   }
 };
 
-// ✅ NEW: Function to create all tables if missing
+// Function to create all tables if missing
 const setupDatabaseTables = async () => {
   try {
     console.log('🛠️ Setting up database tables...');
     
-    // Ensure users table exists
     await ensureUsersTable();
     
-    // Create rooms table if not exists
     try {
       await sequelize.query('SELECT 1 FROM rooms LIMIT 1');
       console.log('✅ Rooms table exists');
@@ -171,7 +160,6 @@ const setupDatabaseTables = async () => {
       }
     }
     
-    // Create bookings table if not exists
     try {
       await sequelize.query('SELECT 1 FROM bookings LIMIT 1');
       console.log('✅ Bookings table exists');
@@ -216,10 +204,8 @@ const connect = async () => {
       await sequelize.authenticate();
       console.log('✅ PostgreSQL connected successfully');
       
-      // ✅ NEW: Setup tables after connection
       await setupDatabaseTables();
       
-      // Test a simple query
       const [result] = await sequelize.query('SELECT version()');
       console.log('📊 PostgreSQL version:', result[0]?.version?.split(' ')[1] || 'Unknown');
       
@@ -237,7 +223,6 @@ const connect = async () => {
         throw error;
       }
       
-      // Wait for 2 seconds before retrying
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
   }
@@ -297,7 +282,6 @@ const closeAllConnections = async () => {
 };
 
 module.exports = {
-  // New API
   sequelize,
   connect,
   checkConnection,
@@ -305,14 +289,12 @@ module.exports = {
   ensureUsersTable,
   setupDatabaseTables,
   
-  // For backward compatibility
   postgresql: sequelize,
   sequelizePostgres: sequelize,
   
   checkAllConnections,
   closeAllConnections,
   
-  // Deprecated
   getPostgresConnection: () => {
     console.warn('⚠️ getPostgresConnection() is deprecated. Use the exported sequelize instance directly.');
     return sequelize;

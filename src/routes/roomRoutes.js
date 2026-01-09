@@ -11,9 +11,12 @@ router.get('/number/:roomNumber', roomController.getRoomByNumber);
 router.get('/types', roomController.getRoomTypes);
 router.get('/search', roomController.searchRooms);
 
+// ✅ NEW ROUTE - Create sample rooms (public for easy setup)
+router.post('/create-sample', roomController.createSampleRooms);
+
 // Private routes
 router.post('/random-occupancy', protect, roomController.generateRandomOccupancy);
 router.post('/reset-all', protect, roomController.resetAllBookings);
-router.post('/seed-rooms', protect, roomController.seedRooms); // ✅ NEW ROUTE
+router.post('/seed-rooms', protect, roomController.seedRooms);
 
 module.exports = router;

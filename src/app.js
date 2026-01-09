@@ -81,7 +81,8 @@ app.get('/', (req, res) => {
         available: 'GET /api/rooms/available',
         byFloor: 'GET /api/rooms/floor/:floorNumber',
         seedRooms: 'POST /api/rooms/seed-rooms (PRIVATE)',
-        resetAll: 'POST /api/rooms/reset-all (PRIVATE)'
+        resetAll: 'POST /api/rooms/reset-all (PRIVATE)',
+        createSample: 'GET /api/rooms/create-sample (NEW!)'
       },
       bookings: {
         create: 'POST /api/bookings',
@@ -90,7 +91,8 @@ app.get('/', (req, res) => {
     },
     emergencyFixes: {
       autoCreateRooms: 'GET/POST /api/auto-fix-rooms',
-      forceCreateRooms: 'GET/POST /api/force-create-rooms'
+      forceCreateRooms: 'GET/POST /api/force-create-rooms',
+      quickCreateRooms: 'GET /api/create-rooms (NEW!)'
     }
   });
 });
@@ -114,7 +116,8 @@ app.get('/api/health', async (req, res) => {
         bookings: '/api/bookings',
         rooms: '/api/rooms',
         admin: '/api/admin',
-        dbTest: '/api/db-test'
+        dbTest: '/api/db-test',
+        createRooms: '/api/create-rooms (NEW)'
       }
     });
   } catch (error) {
@@ -128,9 +131,9 @@ app.get('/api/health', async (req, res) => {
 
 // DB diagnostic endpoint
 app.get('/api/db-test', async (req, res) => {
-  const { sequelizePostgres } = require('./config/database');
+  const { sequelize } = require('./config/database');
   try {
-    const [result] = await sequelizePostgres.query('SELECT 1+1 AS result');
+    const [result] = await sequelize.query('SELECT 1+1 AS result');
     res.status(200).json({ success: true, result });
   } catch (err) {
     console.error('DB test failed:', err && err.message);
@@ -324,12 +327,115 @@ const handleForceCreateRooms = async (req, res) => {
   }
 };
 
-// ✅ EMERGENCY FIX ROUTES (BOTH GET AND POST)
+// ✅ NEW: Quick Room Creation Endpoint
+const handleQuickCreateRooms = async (req, res) => {
+  try {
+    const { sequelize } = require('./config/database');
+    
+    console.log('🏨 Quick room creation requested...');
+    
+    // Create rooms table if not exists
+    try {
+      await sequelize.query('SELECT 1 FROM rooms LIMIT 1');
+      console.log('✅ Rooms table exists');
+    } catch (error) {
+      if (error.message.includes('does not exist')) {
+        console.log('📝 Creating rooms table...');
+        await sequelize.query(`
+          CREATE TABLE rooms (
+            room_id SERIAL PRIMARY KEY,
+            room_number INTEGER UNIQUE NOT NULL,
+            floor INTEGER NOT NULL,
+            position INTEGER NOT NULL,
+            room_type VARCHAR(20) DEFAULT 'standard',
+            is_available BOOLEAN DEFAULT true,
+            base_price DECIMAL(10,2) DEFAULT 100.00,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        console.log('✅ Rooms table created');
+      }
+    }
+    
+    // Create sample rooms
+    const sampleRooms = [
+      [101, 1, 1, 'standard', 100.00, true],
+      [102, 1, 2, 'standard', 100.00, true],
+      [103, 1, 3, 'standard', 100.00, true],
+      [104, 1, 4, 'standard', 100.00, true],
+      [105, 1, 5, 'standard', 100.00, true],
+      [106, 1, 6, 'standard', 100.00, true],
+      [107, 1, 7, 'standard', 100.00, true],
+      [108, 1, 8, 'deluxe', 150.00, true],
+      [109, 1, 9, 'deluxe', 150.00, true],
+      [110, 1, 10, 'deluxe', 150.00, true],
+      [201, 2, 1, 'standard', 100.00, true],
+      [202, 2, 2, 'standard', 100.00, true],
+      [203, 2, 3, 'standard', 100.00, true],
+      [204, 2, 4, 'standard', 100.00, true],
+      [205, 2, 5, 'standard', 100.00, true],
+      [206, 2, 6, 'standard', 100.00, true],
+      [207, 2, 7, 'standard', 100.00, true],
+      [208, 2, 8, 'standard', 100.00, true],
+      [209, 2, 9, 'standard', 100.00, true],
+      [210, 2, 10, 'standard', 100.00, true]
+    ];
+    
+    let createdCount = 0;
+    for (const room of sampleRooms) {
+      try {
+        await sequelize.query(`
+          INSERT INTO rooms (room_number, floor, position, room_type, base_price, is_available)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT (room_number) DO NOTHING
+        `, room);
+        createdCount++;
+      } catch (err) {
+        console.log(`Room ${room[0]} already exists`);
+      }
+    }
+    
+    const [totalCount] = await sequelize.query('SELECT COUNT(*) FROM rooms');
+    const [availableCount] = await sequelize.query('SELECT COUNT(*) FROM rooms WHERE is_available = true');
+    
+    res.json({
+      success: true,
+      message: `Quick room creation complete. ${createdCount} rooms created.`,
+      rooms: {
+        total: parseInt(totalCount[0].count),
+        available: parseInt(availableCount[0].count),
+        occupied: parseInt(totalCount[0].count) - parseInt(availableCount[0].count)
+      },
+      nextSteps: [
+        'GET /api/rooms - See all rooms',
+        'GET /api/rooms/available - See available rooms',
+        'POST /api/auth/register - Register user',
+        'POST /api/auth/login - Login',
+        'POST /api/bookings - Book rooms'
+      ]
+    });
+    
+  } catch (error) {
+    console.error('Quick room creation failed:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create rooms',
+      error: error.message
+    });
+  }
+};
+
+// ✅ EMERGENCY FIX ROUTES
 app.get('/api/auto-fix-rooms', handleAutoFixRooms);
 app.post('/api/auto-fix-rooms', handleAutoFixRooms);
 
 app.get('/api/force-create-rooms', handleForceCreateRooms);
 app.post('/api/force-create-rooms', handleForceCreateRooms);
+
+// ✅ NEW: Quick room creation endpoint
+app.get('/api/create-rooms', handleQuickCreateRooms);
+app.post('/api/create-rooms', handleQuickCreateRooms);
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -348,6 +454,7 @@ app.use('*', (req, res) => {
       'GET    /api/db-test',
       'GET/POST /api/auto-fix-rooms (EMERGENCY)',
       'GET/POST /api/force-create-rooms (EMERGENCY)',
+      'GET/POST /api/create-rooms (QUICK FIX)',
       'POST   /api/auth/register',
       'POST   /api/auth/login',
       'GET    /api/auth/me',

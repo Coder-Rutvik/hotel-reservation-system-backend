@@ -3,25 +3,21 @@ require('dotenv').config();
 console.log('🚀 Starting Hotel Reservation System Backend...');
 console.log('===========================================');
 
-// Log environment
 console.log('📊 Environment:', process.env.NODE_ENV || 'development');
 console.log('🔧 Port:', process.env.PORT || 5000);
 
-// Check if running on Render
 const isRender = process.env.RENDER || process.env.DATABASE_URL?.includes('render.com');
 
 if (isRender) {
   console.log('🌐 Hosting Platform: Render.com');
 }
 
-// Log database info (masked)
 if (process.env.DATABASE_URL) {
   const maskedUrl = process.env.DATABASE_URL.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@');
   console.log('📊 PostgreSQL URL:', maskedUrl);
   console.log('🔒 SSL Enabled:', process.env.PG_SSL === 'true' || isRender ? 'Yes' : 'No');
 }
 
-// Validate required environment variables
 if (process.env.NODE_ENV === 'production') {
   const requiredVars = ['JWT_SECRET'];
   if (!process.env.DATABASE_URL) {
@@ -39,6 +35,84 @@ if (process.env.NODE_ENV === 'production') {
 
 const app = require('./src/app');
 const PORT = process.env.PORT || 5000;
+
+// Function to create rooms automatically
+const createRoomsAutomatically = async () => {
+  try {
+    const { sequelize } = require('./src/config/database');
+    
+    console.log('🔍 Checking if rooms exist...');
+    
+    // Check if rooms table exists
+    try {
+      await sequelize.query('SELECT 1 FROM rooms LIMIT 1');
+    } catch (error) {
+      if (error.message.includes('does not exist') || error.code === '42P01') {
+        console.log('🏨 Rooms table not found. Creating...');
+        await sequelize.query(`
+          CREATE TABLE rooms (
+            room_id SERIAL PRIMARY KEY,
+            room_number INTEGER UNIQUE NOT NULL,
+            floor INTEGER NOT NULL,
+            position INTEGER NOT NULL,
+            room_type VARCHAR(20) DEFAULT 'standard',
+            is_available BOOLEAN DEFAULT true,
+            base_price DECIMAL(10,2) DEFAULT 100.00,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        console.log('✅ Rooms table created');
+      }
+    }
+    
+    // Check room count
+    const [roomCount] = await sequelize.query('SELECT COUNT(*) FROM rooms');
+    const count = parseInt(roomCount[0].count);
+    
+    if (count === 0) {
+      console.log('🏨 No rooms found. Creating 97 rooms...');
+      
+      // Create 20 sample rooms for quick start (not 97)
+      const sampleRooms = [
+        [101, 1, 1, 'standard', 100.00, true],
+        [102, 1, 2, 'standard', 100.00, true],
+        [103, 1, 3, 'standard', 100.00, true],
+        [104, 1, 4, 'standard', 100.00, true],
+        [105, 1, 5, 'standard', 100.00, true],
+        [106, 1, 6, 'standard', 100.00, true],
+        [107, 1, 7, 'standard', 100.00, true],
+        [108, 1, 8, 'deluxe', 150.00, true],
+        [109, 1, 9, 'deluxe', 150.00, true],
+        [110, 1, 10, 'deluxe', 150.00, true],
+        [201, 2, 1, 'standard', 100.00, true],
+        [202, 2, 2, 'standard', 100.00, true],
+        [203, 2, 3, 'standard', 100.00, true],
+        [204, 2, 4, 'standard', 100.00, true],
+        [205, 2, 5, 'standard', 100.00, true],
+        [206, 2, 6, 'standard', 100.00, true],
+        [207, 2, 7, 'standard', 100.00, true],
+        [208, 2, 8, 'standard', 100.00, true],
+        [209, 2, 9, 'standard', 100.00, true],
+        [210, 2, 10, 'standard', 100.00, true]
+      ];
+      
+      for (const room of sampleRooms) {
+        await sequelize.query(`
+          INSERT INTO rooms (room_number, floor, position, room_type, base_price, is_available)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT (room_number) DO NOTHING
+        `, room);
+      }
+      
+      console.log('✅ Created 20 sample rooms');
+    } else {
+      console.log(`✅ Found ${count} rooms`);
+    }
+  } catch (error) {
+    console.error('❌ Room creation failed:', error.message);
+  }
+};
 
 // Retry connection function
 async function retryConnection(fn, name, maxAttempts = 3, baseDelay = 2000) {
@@ -89,11 +163,13 @@ async function initializeDatabase() {
     if (connected) {
       console.log('🔄 Setting up database tables...');
       
-      // Use setupDatabaseTables function from database.js
       const { setupDatabaseTables } = require('./src/config/database');
       await setupDatabaseTables();
       
       console.log('✅ Database setup complete');
+      
+      // Create rooms after database setup
+      await createRoomsAutomatically();
     } else {
       console.warn('⚠️ PostgreSQL not connected - running in limited mode');
     }
@@ -125,13 +201,11 @@ const startServer = async () => {
       setTimeout(initializeDatabase, 1000);
     });
 
-    // Handle server errors
     server.on('error', (error) => {
       console.error('❌ Server error:', error);
       process.exit(1);
     });
 
-    // Graceful shutdown
     const gracefulShutdown = async (signal) => {
       console.log(`\n🔄 ${signal} received. Shutting down gracefully...`);
 
@@ -150,14 +224,12 @@ const startServer = async () => {
         process.exit(0);
       });
 
-      // Force shutdown after 10 seconds
       setTimeout(() => {
         console.error('❌ Forcing shutdown after timeout');
         process.exit(1);
       }, 10000);
     };
 
-    // Handle termination signals
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
@@ -167,7 +239,6 @@ const startServer = async () => {
   }
 };
 
-// Global error handlers
 process.on('unhandledRejection', (reason, promise) => {
   console.error('❌ Unhandled Promise Rejection at:', promise);
   console.error('Reason:', reason);

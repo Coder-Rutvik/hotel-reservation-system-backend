@@ -1,6 +1,49 @@
 const { Booking, User, Room } = require('../models');
 const { Op } = require('sequelize');
 
+// Helper function to ensure rooms exist
+const ensureRoomsExist = async () => {
+  try {
+    const roomCount = await Room.count();
+    if (roomCount === 0) {
+      console.log('🏨 No rooms found. Creating sample rooms...');
+      
+      // Create 20 sample rooms
+      const sampleRooms = [];
+      
+      for (let i = 1; i <= 10; i++) {
+        sampleRooms.push({
+          roomNumber: 100 + i,
+          floor: 1,
+          position: i,
+          roomType: i <= 7 ? 'standard' : 'deluxe',
+          basePrice: i <= 7 ? 100.00 : 150.00,
+          isAvailable: true
+        });
+      }
+      
+      for (let i = 1; i <= 10; i++) {
+        sampleRooms.push({
+          roomNumber: 200 + i,
+          floor: 2,
+          position: i,
+          roomType: 'standard',
+          basePrice: 100.00,
+          isAvailable: true
+        });
+      }
+      
+      await Room.bulkCreate(sampleRooms);
+      console.log(`✅ Created ${sampleRooms.length} sample rooms`);
+      return sampleRooms.length;
+    }
+    return roomCount;
+  } catch (error) {
+    console.error('❌ Failed to create rooms:', error);
+    return 0;
+  }
+};
+
 // @desc    Book rooms
 // @route   POST /api/bookings
 // @access  Private
@@ -45,15 +88,14 @@ const bookRooms = async (req, res) => {
       });
     }
 
-    // Find available rooms
-    console.log('🔍 Looking for available rooms...');
+    // First, ensure rooms exist
+    const roomCount = await ensureRoomsExist();
     
-    const roomCount = await Room.count();
     if (roomCount === 0) {
-      console.log('⚠️ No rooms found in database!');
       return res.status(400).json({
         success: false,
-        message: 'No rooms available in the system.'
+        message: 'No rooms available in the system. Please try again.',
+        suggestion: 'Use POST /api/rooms/seed-rooms to create rooms'
       });
     }
     
