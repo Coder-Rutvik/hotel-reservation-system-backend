@@ -1,5 +1,5 @@
 const { UserPostgres } = require('../models/postgresql');
-const sequelizePostgres = require('../config/postgresql');
+const { sequelizePostgres } = require('../config/database');
 
 const testPostgres = async () => {
   try {

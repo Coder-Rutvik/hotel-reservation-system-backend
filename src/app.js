@@ -21,7 +21,7 @@ const dbConnections = require('./config/database');
 const app = express();
 
 
-app.set('trust proxy', 1); 
+app.set('trust proxy', 1);
 
 // Security middleware
 app.use(helmet());
@@ -67,7 +67,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
   try {
-    const dbStatus = await dbConnections.checkAllConnections();
+    const dbStatus = await dbConnections.checkConnection();
 
     res.status(200).json({
       status: 'ok',
@@ -76,7 +76,7 @@ app.get('/api/health', async (req, res) => {
       version: '1.0.0',
       environment: process.env.NODE_ENV || 'development',
       databases: {
-        postgresql: dbStatus.postgresql.connected ? 'connected' : `disconnected (${dbStatus.postgresql.error})`
+        postgresql: dbStatus.connected ? 'connected' : `disconnected (${dbStatus.error || 'Unknown error'})`
       },
       endpoints: {
         auth: '/api/auth',
@@ -97,7 +97,7 @@ app.get('/api/health', async (req, res) => {
 
 // DB diagnostic endpoint - runs a simple SQL query against PostgreSQL
 app.get('/api/db-test', async (req, res) => {
-  const { sequelizePostgres } = require('./config/postgresql');
+  const { sequelizePostgres } = require('./config/database');
   try {
     const [result] = await sequelizePostgres.query('SELECT 1+1 AS result');
     res.status(200).json({ success: true, result });

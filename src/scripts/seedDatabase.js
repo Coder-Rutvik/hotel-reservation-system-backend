@@ -1,5 +1,5 @@
 require('dotenv').config();
-const sequelize = require('../config/postgresql');
+const { sequelizePostgres: sequelize } = require('../config/database');
 
 // Import models (PostgreSQL)
 const User = require('../models/postgresql/User');
@@ -16,7 +16,7 @@ const seedDatabase = async () => {
     const adminUser = await User.create({
       name: 'Admin User',
       email: 'admin@hotel.com',
-      password: 'admin123', // Will be hashed automatically
+      password: 'admin123',
       phone: '1234567890',
       role: 'admin'
     });
@@ -34,7 +34,7 @@ const seedDatabase = async () => {
 
     // Create rooms (Floors 1-9: 10 rooms each, Floor 10: 7 rooms)
     const rooms = [];
-    
+
     // Floors 1-9
     for (let floor = 1; floor <= 9; floor++) {
       for (let roomNum = 1; roomNum <= 10; roomNum++) {
@@ -48,7 +48,7 @@ const seedDatabase = async () => {
         });
       }
     }
-    
+
     // Floor 10 (7 rooms)
     for (let roomNum = 1; roomNum <= 7; roomNum++) {
       rooms.push({

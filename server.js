@@ -5,7 +5,7 @@ console.log('===========================================');
 
 // Log environment (mask sensitive info)
 console.log('📊 Environment:', process.env.NODE_ENV || 'development');
-console.log('🔧 Port:', process.env.PORT || 10000);
+console.log('🔧 Port:', process.env.PORT || 5000);
 
 // Warn if the web server PORT is mistakenly set to the PostgreSQL default (5432)
 if (process.env.PORT === '5432') {
@@ -21,8 +21,6 @@ if (process.env.DATABASE_URL) {
   console.log('📊 PostgreSQL URL:', maskedPgUrl);
 }
 
-
-
 // Validate required environment variables for production
 if (process.env.NODE_ENV === 'production') {
   const requiredVars = ['JWT_SECRET', 'DATABASE_URL'];
@@ -37,12 +35,12 @@ if (process.env.NODE_ENV === 'production') {
 
 const app = require('./src/app');
 
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 5000;
 
 // Retry connection function with exponential backoff
 async function retryConnection(fn, name, maxAttempts = 3, baseDelay = 2000) {
   let lastError;
-  
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       console.log(`🔄 [${name}] Attempt ${attempt}/${maxAttempts}...`);
@@ -52,7 +50,7 @@ async function retryConnection(fn, name, maxAttempts = 3, baseDelay = 2000) {
     } catch (error) {
       lastError = error;
       console.error(`❌ [${name}] Attempt ${attempt} failed:`, error.message);
-      
+
       if (attempt < maxAttempts) {
         const delay = baseDelay * Math.pow(2, attempt - 1);
         console.log(`⏳ [${name}] Waiting ${delay}ms before next attempt...`);
@@ -60,7 +58,7 @@ async function retryConnection(fn, name, maxAttempts = 3, baseDelay = 2000) {
       }
     }
   }
-  
+
   console.error(`❌ [${name}] All ${maxAttempts} attempts failed`);
   return false;
 }
@@ -68,7 +66,7 @@ async function retryConnection(fn, name, maxAttempts = 3, baseDelay = 2000) {
 // Initialize databases asynchronously (won't block server startup)
 async function initializeDatabases() {
   console.log('\n🔄 Initializing databases...');
-  
+
   // PostgreSQL (Primary - Required)
   try {
     // Fail-fast in production when DATABASE_URL/POSTGRES_HOST points to localhost
@@ -92,7 +90,7 @@ async function initializeDatabases() {
       }
     }
 
-    const sequelizePostgres = require('./src/config/postgresql');
+    const { sequelizePostgres } = require('./src/config/database');
 
     // Diagnostic: log host from DATABASE_URL if present, and validate
     let pgHost = 'localhost';
@@ -133,10 +131,10 @@ async function initializeDatabases() {
         3000
       );
     }
-    
+
     if (connected) {
       console.log('🔄 Syncing PostgreSQL models...');
-      
+
       // Safe sync for production
       if (process.env.NODE_ENV === 'development') {
         await sequelizePostgres.sync({ alter: false }); // Safer: don't alter existing tables
@@ -144,7 +142,7 @@ async function initializeDatabases() {
       } else {
         // In production, only authenticate, don't auto-sync
         console.log('ℹ️  Production: PostgreSQL connected, skipping auto-sync');
-        
+
         // Try to list tables
         try {
           const [results] = await sequelizePostgres.query(`
@@ -163,15 +161,13 @@ async function initializeDatabases() {
     }
   } catch (postgresError) {
     console.error('❌ PostgreSQL initialization error:', postgresError.message);
-    
+
     // Don't crash in production if PostgreSQL fails
     if (process.env.NODE_ENV === 'production') {
       console.warn('⚠️  Continuing without PostgreSQL in production mode');
     }
   }
-  
 
-  
   console.log('✅ Database initialization complete\n');
 }
 
@@ -179,8 +175,11 @@ async function initializeDatabases() {
 async function selfHealthCheck(portToCheck = PORT) {
   try {
     const response = await fetch(`http://localhost:${portToCheck}/api/health`, {
+      headers: {
+        'User-Agent': 'Node.js self-health-check'
+      }
     }).catch(() => null);
-    
+
     if (response && response.ok) {
       console.log('✅ Server self-health check passed');
     } else {
@@ -197,7 +196,7 @@ const startServer = async () => {
     console.log('\n🚀 Starting Express server...');
 
     // Try listening on PORT, if in use try next ports (up to 3 attempts)
-    let basePort = Number(process.env.PORT) || 10000;
+    let basePort = Number(process.env.PORT) || 5000;
     let server;
     let actualPort = basePort;
 
@@ -280,7 +279,7 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('❌ Unhandled Promise Rejection at:', promise);
   console.error('Reason:', reason);
   console.error('Stack:', reason?.stack || 'No stack trace');
-  
+
   // Don't exit in production, just log
   if (process.env.NODE_ENV !== 'production') {
     console.warn('⚠️  Exiting due to unhandled rejection in non-production mode');
@@ -291,13 +290,11 @@ process.on('unhandledRejection', (reason, promise) => {
 process.on('uncaughtException', (error) => {
   console.error('❌ Uncaught Exception:', error);
   console.error('Stack:', error.stack);
-  
-  // Graceful shutdown
+
   setTimeout(() => {
     console.error('⚠️  Forcing exit after uncaught exception');
     process.exit(1);
   }, 1000);
 });
 
-// Start the application
 startServer();
