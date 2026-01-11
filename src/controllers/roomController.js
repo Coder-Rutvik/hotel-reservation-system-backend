@@ -1,6 +1,38 @@
 const { Room, Booking } = require('../models');
 const { Sequelize, Op } = require('sequelize');
 
+// Helper to generate 97 rooms structure
+const generate97Rooms = () => {
+  const rooms = [];
+  // Floors 1-9: 10 rooms each
+  for (let floor = 1; floor <= 9; floor++) {
+    for (let position = 1; position <= 10; position++) {
+      rooms.push({
+        roomNumber: (floor * 100) + position,
+        floor: floor,
+        position: position,
+        roomType: floor >= 8 ? 'deluxe' : 'standard',
+        status: 'not-booked',
+        isAvailable: true,
+        basePrice: floor >= 8 ? 150.00 : 100.00
+      });
+    }
+  }
+  // Floor 10: 7 rooms
+  for (let position = 1; position <= 7; position++) {
+    rooms.push({
+      roomNumber: 1000 + position,
+      floor: 10,
+      position: position,
+      roomType: 'suite',
+      status: 'not-booked',
+      isAvailable: true,
+      basePrice: 200.00
+    });
+  }
+  return rooms;
+};
+
 // @desc    Create sample rooms
 // @route   POST /api/rooms/create-sample
 // @access  Public
@@ -69,13 +101,40 @@ const getAllRooms = async (req, res) => {
       order: [['floor', 'ASC'], ['position', 'ASC']]
     });
 
-    // If no rooms, create sample ones
+    // If no rooms, create them automatically (Self-Healing)
     if (rooms.length === 0) {
+      console.log('⚠️ No rooms found on GET /api/rooms. Triggering auto-seed...');
+      // Re-use seed functionality but internally
+      const seedReq = { body: {} };
+      const seedRes = {
+        json: (data) => {
+          // After seeding, return the data as if it was a normal GET
+          return res.json({
+            success: true,
+            count: data.data.totalRooms,
+            data: data.data.rooms // Note: seedRooms returns list of IDs, we might want objects.
+            // Actually, safer to just return success and ask frontend to reload, 
+            // OR fetch again. But let's fetch again for smooth UX.
+          });
+        },
+        status: (code) => ({ json: (data) => res.status(code).json(data) })
+      };
+
+      // Better approach: Call seed logic directly then re-fetch
+      await require('../models').Room.bulkCreate(
+        generate97Rooms() // We need to extract generation logic to avoid code duplication
+      );
+
+      // Fetch again
+      const newRooms = await Room.findAll({
+        order: [['floor', 'ASC'], ['position', 'ASC']]
+      });
+
       return res.json({
         success: true,
-        count: 0,
-        message: 'No rooms found. Use POST /api/rooms/create-sample to create rooms',
-        data: []
+        count: newRooms.length,
+        message: 'Rooms were auto-generated',
+        data: newRooms
       });
     }
 
