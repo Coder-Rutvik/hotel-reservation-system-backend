@@ -76,66 +76,27 @@ if (process.env.DATABASE_URL) {
 // const ensureUsersTable = async () => ...
 
 // Function to create all tables if missing
+// Function to create all tables (Sync Models)
 const setupDatabaseTables = async () => {
   try {
-    console.log('🛠️ Setting up database tables...');
+    console.log('🛠️ Syncing database models...');
 
-    // await ensureUsersTable(); // REMOVED
+    // This will create all tables based on the models in src/models/
+    // alter: true adds missing columns/tables without dropping existing data
+    await sequelize.sync({ alter: true });
 
+    console.log('✅ Database models synced successfully');
+
+    // Double check specific tables just in case
     try {
-      await sequelize.query('SELECT 1 FROM rooms LIMIT 1');
-      console.log('✅ Rooms table exists');
-    } catch (error) {
-      if (error.message.includes('does not exist') || error.code === '42P01') {
-        console.log('📝 Creating rooms table...');
-        await sequelize.query(`
-          CREATE TABLE rooms (
-            room_id SERIAL PRIMARY KEY,
-            room_number INTEGER UNIQUE NOT NULL,
-            floor INTEGER NOT NULL,
-            position INTEGER NOT NULL,
-            room_type VARCHAR(20) DEFAULT 'standard',
-            status VARCHAR(20) DEFAULT 'not-booked',
-            is_available BOOLEAN DEFAULT true,
-            base_price DECIMAL(10,2) DEFAULT 100.00,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-          )
-        `);
-        console.log('✅ Rooms table created');
-      }
-    }
+      const [results] = await sequelize.query("SELECT to_regclass('public.rooms')");
+      if (results[0].to_regclass) console.log('✅ Confirmed: rooms table exists');
+      else console.error('❌ Warning: rooms table might be missing even after sync');
+    } catch (e) { console.log('Checking table existence skipped'); }
 
-    try {
-      await sequelize.query('SELECT 1 FROM bookings LIMIT 1');
-      console.log('✅ Bookings table exists');
-    } catch (error) {
-      if (error.message.includes('does not exist') || error.code === '42P01') {
-        console.log('📝 Creating bookings table...');
-        await sequelize.query(`
-          CREATE TABLE bookings (
-            booking_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            rooms JSONB NOT NULL,
-            total_rooms INTEGER NOT NULL,
-            travel_time INTEGER NOT NULL,
-            total_price DECIMAL(10,2) NOT NULL,
-            booking_date DATE DEFAULT CURRENT_DATE,
-            check_in_date DATE NOT NULL,
-            check_out_date DATE NOT NULL,
-            status VARCHAR(20) DEFAULT 'confirmed',
-            payment_status VARCHAR(20) DEFAULT 'pending',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-          )
-        `);
-        console.log('✅ Bookings table created');
-      }
-    }
-
-    console.log('🎉 All database tables setup complete');
     return true;
   } catch (error) {
-    console.error('❌ setupDatabaseTables failed:', error.message);
+    console.error('❌ Database sync failed:', error.message);
     return false;
   }
 };
