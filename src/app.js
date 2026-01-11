@@ -227,11 +227,14 @@ const handleForceCreateRooms = async (req, res) => {
   try {
     const { sequelize } = require('./config/database');
 
-    console.log('💥 FORCE CREATING 97 ROOMS...');
+    console.log('💥 FORCE CREATING TABLES & ROOMS (NUCLEAR OPTION)...');
 
-    // 1. Drop and recreate table
+    // 1. Drop tables (Bookings first due to FK, though we removed FKs, good practice)
+    await sequelize.query('DROP TABLE IF EXISTS bookings CASCADE');
     await sequelize.query('DROP TABLE IF EXISTS rooms CASCADE');
 
+    // 2. Create Rooms
+    console.log('📝 Creating Rooms Table...');
     await sequelize.query(`
       CREATE TABLE rooms (
         room_id SERIAL PRIMARY KEY,
@@ -247,61 +250,61 @@ const handleForceCreateRooms = async (req, res) => {
       )
     `);
 
-    // 2. Add 97 rooms
-    const rooms = [];
+    // 3. Create Bookings
+    console.log('📝 Creating Bookings Table...');
+    await sequelize.query(`
+      CREATE TABLE bookings (
+        booking_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        rooms JSONB NOT NULL,
+        total_rooms INTEGER NOT NULL,
+        travel_time INTEGER NOT NULL,
+        total_price DECIMAL(10,2) NOT NULL,
+        booking_date DATE DEFAULT CURRENT_DATE,
+        check_in_date DATE NOT NULL,
+        check_out_date DATE NOT NULL,
+        status VARCHAR(20) DEFAULT 'confirmed',
+        payment_status VARCHAR(20) DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
-    // Floors 1-9: 10 rooms each
+    // 4. Seed 97 Rooms
+    console.log('🌱 Seeding 97 Rooms...');
+    const rooms = [];
+    // Floors 1-9
     for (let floor = 1; floor <= 9; floor++) {
       for (let position = 1; position <= 10; position++) {
-        rooms.push({
-          room_number: (floor * 100) + position,
-          floor: floor,
-          position: position,
-          room_type: floor >= 8 ? 'deluxe' : 'standard',
-          is_available: true,
-          base_price: floor >= 8 ? 150.00 : 100.00
-        });
+        rooms.push(`(${floor * 100 + position}, ${floor}, ${position}, '${floor >= 8 ? 'deluxe' : 'standard'}', 'not-booked', true, ${floor >= 8 ? 150.00 : 100.00})`);
       }
     }
-
-    // Floor 10: 7 rooms
+    // Floor 10
     for (let position = 1; position <= 7; position++) {
-      rooms.push({
-        room_number: 1000 + position,
-        floor: 10,
-        position: position,
-        room_type: 'suite',
-        is_available: true,
-        base_price: 200.00
-      });
+      rooms.push(`(${1000 + position}, 10, ${position}, 'suite', 'not-booked', true, 200.00)`);
     }
 
-    // 3. Insert all rooms
-    for (const room of rooms) {
-      await sequelize.query(`
-        INSERT INTO rooms (room_number, floor, position, room_type, status, is_available, base_price)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-      `, [room.room_number, room.floor, room.position, room.room_type, 'not-booked', room.is_available, room.base_price]);
-    }
+    await sequelize.query(`
+      INSERT INTO rooms (room_number, floor, position, room_type, status, is_available, base_price)
+      VALUES ${rooms.join(', ')}
+      ON CONFLICT (room_number) DO NOTHING
+    `);
 
-    const [count] = await sequelize.query('SELECT COUNT(*) FROM rooms');
+    // 5. Verification
+    const [rc] = await sequelize.query('SELECT COUNT(*) FROM rooms');
 
     res.json({
       success: true,
-      message: `FORCE CREATED ${count[0].count} ROOMS SUCCESSFULLY`,
-      rooms: {
-        total: parseInt(count[0].count),
-        floors: '1-10',
-        specification: 'Floors 1-9: 10 rooms, Floor 10: 7 rooms'
-      },
-      action: 'APPLICATION IS NOW 100% READY FOR BOOKINGS!'
+      message: `DATABASE FULLY REPAIRED. Tables created and ${rc[0].count} rooms seeded.`,
+      action: 'Refresh your frontend and book now!',
+      timestamp: new Date().toISOString()
     });
 
   } catch (error) {
     console.error('Force create error:', error);
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
+      detail: 'Check server logs for SQL error'
     });
   }
 };
