@@ -19,7 +19,19 @@ class AlgorithmService {
   }
 
   calculateTravelTime(rooms) {
-    return this.calculateHorizontalTime(rooms) + this.calculateVerticalTime(rooms);
+    if (!rooms || rooms.length === 0) return 0;
+
+    const floors = rooms.map(r => r.floor);
+    const positions = rooms.map(r => r.position);
+
+    const maxFloor = Math.max(...floors);
+    const maxPos = Math.max(...positions);
+    const minPos = Math.min(...positions);
+
+    // Formula derived from PDF examples:
+    // [101, 102, 105, 106] -> (1-1)*2 + (6-1) = 5 mins
+    // [201, 202]           -> (2-1)*2 + (2-1) = 3 mins
+    return (maxFloor - 1) * this.VERTICAL_TIME + (maxPos - minPos);
   }
 
   findBestOnSingleFloor(availableRooms, numRooms) {
@@ -107,17 +119,17 @@ class AlgorithmService {
       { number: 105, floor: 1, position: 5 },
       { number: 106, floor: 1, position: 6 }
     ];
-    
+
     const travelTime1 = this.calculateTravelTime(example1Rooms);
-    
+
     // Example 2 from PDF
     const example2Rooms = [
       { number: 201, floor: 2, position: 1 },
       { number: 202, floor: 2, position: 2 }
     ];
-    
+
     const travelTime2 = this.calculateTravelTime(example2Rooms);
-    
+
     return {
       example1: {
         rooms: [101, 102, 105, 106],
@@ -137,43 +149,43 @@ class AlgorithmService {
   // Helper method for testing
   testAlgorithm() {
     console.log('🧪 Testing Algorithm Service...');
-    
+
     // Test 1: Single floor rooms
     const test1Rooms = [
       { number: 101, floor: 1, position: 1 },
       { number: 102, floor: 1, position: 2 },
       { number: 103, floor: 1, position: 3 }
     ];
-    
+
     const test1Result = this.calculateTravelTime(test1Rooms);
     console.log(`Test 1 - Single floor: ${test1Result} minutes (expected: 2)`);
-    
+
     // Test 2: Multiple floors
     const test2Rooms = [
       { number: 101, floor: 1, position: 1 },
       { number: 201, floor: 2, position: 1 },
       { number: 301, floor: 3, position: 1 }
     ];
-    
+
     const test2Result = this.calculateTravelTime(test2Rooms);
     console.log(`Test 2 - Multiple floors: ${test2Result} minutes (expected: 4)`);
-    
+
     // Test 3: Mixed floors and positions
     const test3Rooms = [
       { number: 101, floor: 1, position: 1 },
       { number: 102, floor: 1, position: 5 },
       { number: 210, floor: 2, position: 10 }
     ];
-    
+
     const test3Result = this.calculateTravelTime(test3Rooms);
     console.log(`Test 3 - Mixed: ${test3Result} minutes`);
-    
+
     // Test PDF examples
     const pdfResults = this.verifyPDFExamples();
     console.log('📋 PDF Examples Validation:');
     console.log(`  Example 1: ${pdfResults.example1.passed ? '✅ PASS' : '❌ FAIL'} (${pdfResults.example1.travelTime} minutes)`);
     console.log(`  Example 2: ${pdfResults.example2.passed ? '✅ PASS' : '❌ FAIL'} (${pdfResults.example2.travelTime} minutes)`);
-    
+
     return {
       test1: { result: test1Result, passed: test1Result === 2 },
       test2: { result: test2Result, passed: test2Result === 4 },

@@ -1,60 +1,16 @@
-const { Booking, User, Room } = require('../models');
+const { Booking, Room } = require('../models');
 const { Op } = require('sequelize');
-
-// Helper function to ensure rooms exist
-const ensureRoomsExist = async () => {
-  try {
-    const roomCount = await Room.count();
-    if (roomCount === 0) {
-      console.log('🏨 No rooms found. Creating sample rooms...');
-      
-      // Create 20 sample rooms
-      const sampleRooms = [];
-      
-      for (let i = 1; i <= 10; i++) {
-        sampleRooms.push({
-          roomNumber: 100 + i,
-          floor: 1,
-          position: i,
-          roomType: i <= 7 ? 'standard' : 'deluxe',
-          basePrice: i <= 7 ? 100.00 : 150.00,
-          isAvailable: true
-        });
-      }
-      
-      for (let i = 1; i <= 10; i++) {
-        sampleRooms.push({
-          roomNumber: 200 + i,
-          floor: 2,
-          position: i,
-          roomType: 'standard',
-          basePrice: 100.00,
-          isAvailable: true
-        });
-      }
-      
-      await Room.bulkCreate(sampleRooms);
-      console.log(`✅ Created ${sampleRooms.length} sample rooms`);
-      return sampleRooms.length;
-    }
-    return roomCount;
-  } catch (error) {
-    console.error('❌ Failed to create rooms:', error);
-    return 0;
-  }
-};
+const algorithmService = require('../services/algorithmService');
 
 // @desc    Book rooms
 // @route   POST /api/bookings
-// @access  Private
 const bookRooms = async (req, res) => {
   try {
     const { numRooms, checkInDate, checkOutDate } = req.body;
-    const userId = req.user.userId;
 
-    console.log('📅 Booking attempt by user:', userId, { numRooms, checkInDate, checkOutDate });
+    console.log('📅 Booking attempt:', { numRooms, checkInDate, checkOutDate });
 
-    // Validation
+    // 1. Validation
     if (!numRooms || numRooms < 1 || numRooms > 5) {
       return res.status(400).json({
         success: false,
@@ -88,71 +44,58 @@ const bookRooms = async (req, res) => {
       });
     }
 
-    // First, ensure rooms exist
-    const roomCount = await ensureRoomsExist();
-    
-    if (roomCount === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'No rooms available in the system. Please try again.',
-        suggestion: 'Use POST /api/rooms/seed-rooms to create rooms'
-      });
-    }
-    
+    // 2. Fetch available rooms
     const allAvailableRooms = await Room.findAll({
       where: { isAvailable: true },
       order: [['floor', 'ASC'], ['position', 'ASC']]
     });
 
-    console.log(`📊 Found ${allAvailableRooms.length} available rooms out of ${roomCount} total`);
-
     if (allAvailableRooms.length < numRooms) {
       return res.status(400).json({
         success: false,
-        message: `Not enough available rooms. Need ${numRooms}, but only ${allAvailableRooms.length} available`
+        message: `Not enough rooms available. (Requested: ${numRooms}, Available: ${allAvailableRooms.length})`
       });
     }
 
-    // Take first N available rooms
-    const selectedRooms = allAvailableRooms.slice(0, numRooms);
-    const roomNumbers = selectedRooms.map(room => room.roomNumber);
-    
-    // Calculate travel time
-    let travelTime = 0;
-    if (selectedRooms.length > 1) {
-      const firstFloor = selectedRooms[0].floor;
-      const sameFloor = selectedRooms.every(room => room.floor === firstFloor);
-      
-      if (sameFloor) {
-        const positions = selectedRooms.map(r => r.position);
-        const maxPos = Math.max(...positions);
-        const minPos = Math.min(...positions);
-        travelTime = (maxPos - minPos) * 2;
-      } else {
-        travelTime = (selectedRooms.length * 3) + 5;
+    // 3. Find optimal rooms using AlgorithmService
+    const roomsByFloor = [];
+    for (let f = 1; f <= 10; f++) {
+      const floorRooms = allAvailableRooms.filter(r => r.floor === f);
+      if (floorRooms.length > 0) {
+        roomsByFloor.push(floorRooms);
       }
     }
 
-    // Calculate price
+    const optimalResult = await algorithmService.findOptimalRooms(roomsByFloor, numRooms);
+
+    if (!optimalResult) {
+      return res.status(400).json({
+        success: false,
+        message: 'Could not find an optimal combination of rooms.'
+      });
+    }
+
+    const selectedRooms = optimalResult.rooms;
+    const roomNumbers = selectedRooms.map(room => room.roomNumber);
+    const travelTime = optimalResult.travelTime;
+
+    // 4. Calculate total price
     const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
     let totalPrice = 0;
     selectedRooms.forEach(room => {
       let pricePerNight = parseFloat(room.basePrice);
-      
       const checkInDay = checkIn.getDay();
       if (checkInDay === 5 || checkInDay === 6) {
         pricePerNight *= 1.2;
       }
-      
       totalPrice += pricePerNight * nights;
     });
 
     totalPrice = parseFloat(totalPrice.toFixed(2));
 
-    // Create booking
-    console.log('💾 Creating booking...');
+    // 5. Create booking record
+    console.log('💾 Creating booking record...');
     const booking = await Booking.create({
-      userId,
       rooms: roomNumbers,
       totalRooms: numRooms,
       travelTime,
@@ -163,9 +106,12 @@ const bookRooms = async (req, res) => {
       paymentStatus: 'pending'
     });
 
-    // Update room availability
+    // 6. Update room availability
     await Room.update(
-      { isAvailable: false },
+      {
+        isAvailable: false,
+        status: 'booked'
+      },
       {
         where: {
           roomNumber: roomNumbers
@@ -173,16 +119,8 @@ const bookRooms = async (req, res) => {
       }
     );
 
-    console.log('✅ Booking created successfully:', {
-      bookingId: booking.bookingId,
-      rooms: roomNumbers,
-      travelTime,
-      totalPrice
-    });
-
     res.status(201).json({
       success: true,
-      message: 'Booking successful!',
       data: {
         bookingId: booking.bookingId,
         rooms: roomNumbers,
@@ -190,79 +128,47 @@ const bookRooms = async (req, res) => {
         totalPrice,
         checkInDate,
         checkOutDate,
-        bookingDate: booking.bookingDate,
-        status: booking.status,
-        nights: nights
+        status: booking.status
       }
     });
 
   } catch (error) {
     console.error('❌ Booking error:', error);
-    
     res.status(500).json({
       success: false,
       message: 'Server error during booking',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: error.message
     });
   }
 };
 
-// @desc    Get user bookings
-// @route   GET /api/bookings/my-bookings
-// @access  Private
-const getUserBookings = async (req, res) => {
+// @desc    Get all bookings
+const getBookings = async (req, res) => {
   try {
-    const userId = req.user.userId;
-
     const bookings = await Booking.findAll({
-      where: { userId: userId },
       order: [['createdAt', 'DESC']]
-    });
-
-    console.log(`✅ Found ${bookings.length} bookings for user ${userId}`);
-
-    // Get user details separately
-    const user = await User.findByPk(userId, {
-      attributes: ['name', 'email', 'phone']
-    });
-
-    // Add user info to bookings
-    const bookingsWithUser = bookings.map(booking => {
-      const bookingData = booking.toJSON();
-      return {
-        ...bookingData,
-        user: user || { name: 'User', email: 'N/A' }
-      };
     });
 
     res.json({
       success: true,
       count: bookings.length,
-      data: bookingsWithUser
+      data: bookings
     });
   } catch (error) {
     console.error('Get bookings error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch bookings',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: 'Failed to fetch bookings'
     });
   }
 };
 
 // @desc    Get booking by ID
-// @route   GET /api/bookings/:id
-// @access  Private
 const getBookingById = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.userId;
-
     const booking = await Booking.findOne({
-      where: {
-        bookingId: id,
-        userId: userId
-      }
+      where: { bookingId: id }
     });
 
     if (!booking) {
@@ -272,16 +178,9 @@ const getBookingById = async (req, res) => {
       });
     }
 
-    const user = await User.findByPk(userId, {
-      attributes: ['name', 'email']
-    });
-
-    const bookingData = booking.toJSON();
-    bookingData.user = user || { name: 'User', email: 'N/A' };
-
     res.json({
       success: true,
-      data: bookingData
+      data: booking
     });
   } catch (error) {
     console.error('Get booking error:', error);
@@ -293,18 +192,11 @@ const getBookingById = async (req, res) => {
 };
 
 // @desc    Cancel booking
-// @route   PUT /api/bookings/:id/cancel
-// @access  Private
 const cancelBooking = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.userId;
-
     const booking = await Booking.findOne({
-      where: {
-        bookingId: id,
-        userId: userId
-      }
+      where: { bookingId: id }
     });
 
     if (!booking) {
@@ -314,26 +206,13 @@ const cancelBooking = async (req, res) => {
       });
     }
 
-    if (booking.status === 'cancelled') {
-      return res.status(400).json({
-        success: false,
-        message: 'Booking is already cancelled'
-      });
-    }
-
     booking.status = 'cancelled';
     await booking.save();
 
     await Room.update(
-      { isAvailable: true },
-      {
-        where: {
-          roomNumber: booking.rooms
-        }
-      }
+      { isAvailable: true, status: 'not-booked' },
+      { where: { roomNumber: booking.rooms } }
     );
-
-    console.log('✅ Booking cancelled:', { bookingId: id, userId });
 
     res.json({
       success: true,
@@ -349,58 +228,9 @@ const cancelBooking = async (req, res) => {
   }
 };
 
-// @desc    Get booking statistics
-// @route   GET /api/bookings/stats
-// @access  Private
-const getBookingStats = async (req, res) => {
-  try {
-    const userId = req.user.userId;
-
-    const totalBookings = await Booking.count({ where: { userId: userId } });
-    const confirmedBookings = await Booking.count({
-      where: { userId: userId, status: 'confirmed' }
-    });
-    const cancelledBookings = await Booking.count({
-      where: { userId: userId, status: 'cancelled' }
-    });
-    const totalSpent = await Booking.sum('totalPrice', {
-      where: { userId: userId, status: 'confirmed' }
-    }) || 0;
-
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const recentBookings = await Booking.count({
-      where: {
-        userId: userId,
-        createdAt: { [Op.gte]: thirtyDaysAgo }
-      }
-    });
-
-    res.json({
-      success: true,
-      data: {
-        total: totalBookings,
-        confirmed: confirmedBookings,
-        cancelled: cancelledBookings,
-        recent: recentBookings,
-        totalSpent: parseFloat(totalSpent),
-        averageSpent: totalBookings > 0 ? parseFloat(totalSpent) / totalBookings : 0
-      }
-    });
-  } catch (error) {
-    console.error('Get stats error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error'
-    });
-  }
-};
-
 module.exports = {
   bookRooms,
-  getUserBookings,
+  getBookings,
   getBookingById,
-  cancelBooking,
-  getBookingStats
+  cancelBooking
 };

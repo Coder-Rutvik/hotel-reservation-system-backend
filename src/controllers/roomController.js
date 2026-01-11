@@ -7,37 +7,42 @@ const { Sequelize, Op } = require('sequelize');
 const createSampleRooms = async (req, res) => {
   try {
     console.log('🏨 Creating sample rooms...');
-    
+
     // Delete existing rooms
     await Room.destroy({ where: {} });
-    
+
     const roomsToCreate = [];
-    
-    // Create 20 sample rooms (for quick testing)
-    for (let i = 1; i <= 10; i++) {
+
+    // Floors 1-9: 10 rooms each
+    for (let floor = 1; floor <= 9; floor++) {
+      for (let position = 1; position <= 10; position++) {
+        roomsToCreate.push({
+          roomNumber: (floor * 100) + position,
+          floor: floor,
+          position: position,
+          roomType: floor >= 8 ? 'deluxe' : 'standard',
+          status: 'not-booked',
+          isAvailable: true,
+          basePrice: floor >= 8 ? 150.00 : 100.00
+        });
+      }
+    }
+
+    // Floor 10: 7 rooms
+    for (let position = 1; position <= 7; position++) {
       roomsToCreate.push({
-        roomNumber: 100 + i,
-        floor: 1,
-        position: i,
-        roomType: i <= 7 ? 'standard' : 'deluxe',
+        roomNumber: 1000 + position,
+        floor: 10,
+        position: position,
+        roomType: 'suite',
+        status: 'not-booked',
         isAvailable: true,
-        basePrice: i <= 7 ? 100.00 : 150.00
+        basePrice: 200.00
       });
     }
-    
-    for (let i = 1; i <= 10; i++) {
-      roomsToCreate.push({
-        roomNumber: 200 + i,
-        floor: 2,
-        position: i,
-        roomType: 'standard',
-        isAvailable: true,
-        basePrice: 100.00
-      });
-    }
-    
+
     await Room.bulkCreate(roomsToCreate);
-    
+
     res.json({
       success: true,
       message: `Successfully created ${roomsToCreate.length} sample rooms`,
@@ -253,14 +258,16 @@ const generateRandomOccupancy = async (req, res) => {
     const occupancyRate = 0.3 + Math.random() * 0.3;
     const numToBook = Math.floor(allRooms.length * occupancyRate);
     const shuffled = allRooms.sort(() => 0.5 - Math.random());
-    
+
     for (const room of shuffled.slice(0, numToBook)) {
       room.isAvailable = false;
+      room.status = 'booked';
       await room.save();
     }
-    
+
     for (const room of shuffled.slice(numToBook)) {
       room.isAvailable = true;
+      room.status = 'not-booked';
       await room.save();
     }
 
@@ -283,22 +290,31 @@ const generateRandomOccupancy = async (req, res) => {
   }
 };
 
-// @desc    Reset all bookings and make all rooms available
+// @desc    Reset all bookings and make all rooms available (and fix room count if needed)
 // @route   POST /api/rooms/reset-all
 // @access  Private
 const resetAllBookings = async (req, res) => {
   try {
+    // 1. Cancel all confirmed bookings
     await Booking.update(
       { status: 'cancelled' },
       { where: { status: 'confirmed' } }
     );
 
+    // 2. Make all rooms available
     await Room.update(
-      { isAvailable: true },
+      { isAvailable: true, status: 'not-booked' },
       { where: {} }
     );
 
+    // 3. AUTO-FIX: Check if we have exactly 97 rooms
     const totalRooms = await Room.count();
+
+    if (totalRooms !== 97) {
+      console.log(`⚠️ Reset detected ${totalRooms} rooms. Enforcing 97 rooms...`);
+      await seedRooms(req, res); // Re-use seed logic to fix it
+      return; // seedRooms handles the response
+    }
 
     res.json({
       success: true,
@@ -323,37 +339,42 @@ const resetAllBookings = async (req, res) => {
 const seedRooms = async (req, res) => {
   try {
     console.log('🏨 Seeding rooms...');
-    
+
     // Delete all existing rooms
     await Room.destroy({ where: {} });
-    
+
     const roomsToCreate = [];
-    
-    // Create sample rooms (20 rooms total)
-    for (let i = 1; i <= 10; i++) {
+
+    // Floors 1-9: 10 rooms each
+    for (let floor = 1; floor <= 9; floor++) {
+      for (let position = 1; position <= 10; position++) {
+        roomsToCreate.push({
+          roomNumber: (floor * 100) + position,
+          floor: floor,
+          position: position,
+          roomType: floor >= 8 ? 'deluxe' : 'standard',
+          status: 'not-booked',
+          isAvailable: true,
+          basePrice: floor >= 8 ? 150.00 : 100.00
+        });
+      }
+    }
+
+    // Floor 10: 7 rooms
+    for (let position = 1; position <= 7; position++) {
       roomsToCreate.push({
-        roomNumber: 100 + i,
-        floor: 1,
-        position: i,
-        roomType: i <= 7 ? 'standard' : 'deluxe',
+        roomNumber: 1000 + position,
+        floor: 10,
+        position: position,
+        roomType: 'suite',
+        status: 'not-booked',
         isAvailable: true,
-        basePrice: i <= 7 ? 100.00 : 150.00
+        basePrice: 200.00
       });
     }
-    
-    for (let i = 1; i <= 10; i++) {
-      roomsToCreate.push({
-        roomNumber: 200 + i,
-        floor: 2,
-        position: i,
-        roomType: 'standard',
-        isAvailable: true,
-        basePrice: 100.00
-      });
-    }
-    
+
     await Room.bulkCreate(roomsToCreate);
-    
+
     res.json({
       success: true,
       message: `Successfully seeded ${roomsToCreate.length} rooms`,

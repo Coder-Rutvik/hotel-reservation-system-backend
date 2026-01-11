@@ -19,16 +19,16 @@ if (process.env.DATABASE_URL) {
 }
 
 if (process.env.NODE_ENV === 'production') {
-  const requiredVars = ['JWT_SECRET'];
+  const requiredVars = ['DATABASE_URL'];
   if (!process.env.DATABASE_URL) {
     requiredVars.push('POSTGRES_HOST', 'POSTGRES_DATABASE', 'POSTGRES_USER', 'POSTGRES_PASSWORD');
   }
-  
+
   const missingVars = requiredVars.filter(varName => !process.env[varName]);
-  
+
   if (missingVars.length > 0) {
     console.error('❌ ERROR: Missing required environment variables:', missingVars);
-    console.error('💡 For Render: Set DATABASE_URL, JWT_SECRET, PG_SSL=true');
+    console.error('💡 For Render: Set DATABASE_URL, PG_SSL=true');
     process.exit(1);
   }
 }
@@ -40,9 +40,9 @@ const PORT = process.env.PORT || 5000;
 const createRoomsAutomatically = async () => {
   try {
     const { sequelize } = require('./src/config/database');
-    
+
     console.log('🔍 Checking if rooms exist...');
-    
+
     // Check if rooms table exists
     try {
       await sequelize.query('SELECT 1 FROM rooms LIMIT 1');
@@ -56,6 +56,7 @@ const createRoomsAutomatically = async () => {
             floor INTEGER NOT NULL,
             position INTEGER NOT NULL,
             room_type VARCHAR(20) DEFAULT 'standard',
+            status VARCHAR(20) DEFAULT 'not-booked',
             is_available BOOLEAN DEFAULT true,
             base_price DECIMAL(10,2) DEFAULT 100.00,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -65,46 +66,59 @@ const createRoomsAutomatically = async () => {
         console.log('✅ Rooms table created');
       }
     }
-    
+
     // Check room count
     const [roomCount] = await sequelize.query('SELECT COUNT(*) FROM rooms');
     const count = parseInt(roomCount[0].count);
-    
+
     if (count === 0) {
-      console.log('🏨 No rooms found. Creating 97 rooms...');
-      
-      // CREATE 20 SAMPLE ROOMS ONLY - SIMPLE VERSION
-      console.log('Creating 20 sample rooms...');
-      
-      // Simple query without parameters
-      await sequelize.query(`
-        INSERT INTO rooms (room_number, floor, position, room_type, base_price, is_available) VALUES
-        (101, 1, 1, 'standard', 100.00, true),
-        (102, 1, 2, 'standard', 100.00, true),
-        (103, 1, 3, 'standard', 100.00, true),
-        (104, 1, 4, 'standard', 100.00, true),
-        (105, 1, 5, 'standard', 100.00, true),
-        (106, 1, 6, 'standard', 100.00, true),
-        (107, 1, 7, 'standard', 100.00, true),
-        (108, 1, 8, 'deluxe', 150.00, true),
-        (109, 1, 9, 'deluxe', 150.00, true),
-        (110, 1, 10, 'deluxe', 150.00, true),
-        (201, 2, 1, 'standard', 100.00, true),
-        (202, 2, 2, 'standard', 100.00, true),
-        (203, 2, 3, 'standard', 100.00, true),
-        (204, 2, 4, 'standard', 100.00, true),
-        (205, 2, 5, 'standard', 100.00, true),
-        (206, 2, 6, 'standard', 100.00, true),
-        (207, 2, 7, 'standard', 100.00, true),
-        (208, 2, 8, 'standard', 100.00, true),
-        (209, 2, 9, 'standard', 100.00, true),
-        (210, 2, 10, 'standard', 100.00, true)
-        ON CONFLICT (room_number) DO NOTHING
-      `);
-      
-      console.log('✅ Created 20 sample rooms');
+      console.log('🏨 No rooms found. Creating 97 rooms (Assessment Compliant)...');
+
+      const rooms = [];
+
+      // Floors 1-9: 10 rooms each
+      for (let floor = 1; floor <= 9; floor++) {
+        for (let position = 1; position <= 10; position++) {
+          const roomNumber = (floor * 100) + position;
+          rooms.push({
+            room_number: roomNumber,
+            floor: floor,
+            position: position,
+            room_type: floor >= 8 ? 'deluxe' : 'standard',
+            status: 'not-booked',
+            is_available: true,
+            base_price: floor >= 8 ? 150.00 : 100.00
+          });
+        }
+      }
+
+      // Floor 10: 7 rooms
+      for (let position = 1; position <= 7; position++) {
+        const roomNumber = 1000 + position;
+        rooms.push({
+          room_number: 1000 + position,
+          floor: 10,
+          position: position,
+          room_type: 'suite',
+          is_available: true,
+          base_price: 200.00
+        });
+      }
+
+      for (const room of rooms) {
+        await sequelize.query(`
+          INSERT INTO rooms (room_number, floor, position, room_type, status, is_available, base_price)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          ON CONFLICT (room_number) DO NOTHING
+        `, [room.room_number, room.floor, room.position, room.room_type, room.status, room.is_available, room.base_price]);
+      }
+
+      console.log('✅ Created 97 rooms successfully');
     } else {
       console.log(`✅ Found ${count} rooms`);
+      if (count !== 97) {
+        console.warn(`⚠️ Warning: Found ${count} rooms, but Assessment requires 97. You may want to reset the DB.`);
+      }
     }
   } catch (error) {
     console.error('❌ Room creation failed:', error.message);
@@ -143,7 +157,7 @@ async function initializeDatabase() {
 
   try {
     const { sequelize } = require('./src/config/database');
-    
+
     if (!sequelize || typeof sequelize.authenticate !== 'function') {
       throw new Error('PostgreSQL client is not available');
     }
@@ -159,12 +173,12 @@ async function initializeDatabase() {
 
     if (connected) {
       console.log('🔄 Setting up database tables...');
-      
+
       const { setupDatabaseTables } = require('./src/config/database');
       await setupDatabaseTables();
-      
+
       console.log('✅ Database setup complete');
-      
+
       // Create rooms after database setup
       await createRoomsAutomatically();
     } else {
@@ -172,7 +186,7 @@ async function initializeDatabase() {
     }
   } catch (error) {
     console.error('❌ Database initialization error:', error.message);
-    
+
     if (process.env.NODE_ENV === 'production') {
       console.warn('⚠️ Continuing without database in production mode');
     } else {
@@ -193,7 +207,7 @@ const startServer = async () => {
       console.log(`🌐 Local URL: http://localhost:${PORT}`);
       console.log(`🔍 Health endpoint: http://localhost:${PORT}/api/health`);
       console.log('===========================================\n');
-      
+
       // Initialize database in background
       setTimeout(initializeDatabase, 1000);
     });

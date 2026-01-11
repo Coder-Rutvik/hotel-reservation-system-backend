@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const roomController = require('../controllers/roomController');
-const { protect, authorize } = require('../middleware/auth');
 
 // Public routes
 router.get('/', roomController.getAllRooms);
@@ -11,12 +10,10 @@ router.get('/number/:roomNumber', roomController.getRoomByNumber);
 router.get('/types', roomController.getRoomTypes);
 router.get('/search', roomController.searchRooms);
 
-// ✅ NEW ROUTE - Create sample rooms (public for easy setup)
+// Admin/System routes
 router.post('/create-sample', roomController.createSampleRooms);
-
-// Private routes
-router.post('/random-occupancy', protect, roomController.generateRandomOccupancy);
-router.post('/reset-all', protect, roomController.resetAllBookings);
-router.post('/seed-rooms', protect, roomController.seedRooms);
+router.post('/random-occupancy', roomController.generateRandomOccupancy);
+router.post('/reset-all', roomController.resetAllBookings);
+router.post('/seed-rooms', roomController.seedRooms);
 
 module.exports = router;

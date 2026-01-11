@@ -29,6 +29,11 @@ const RoomPostgres = sequelize.define('Room', {
     defaultValue: 'standard',
     field: 'room_type'
   },
+  status: {
+    type: DataTypes.STRING(20),
+    defaultValue: 'not-booked',
+    field: 'status'
+  },
   isAvailable: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,

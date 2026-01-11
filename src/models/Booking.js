@@ -9,11 +9,7 @@ const BookingPostgres = sequelize.define('Booking', {
     primaryKey: true,
     field: 'booking_id'
   },
-  userId: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    field: 'user_id'
-  },
+  // userId: { ... } REMOVED
   rooms: {
     type: DataTypes.JSONB,
     allowNull: false,

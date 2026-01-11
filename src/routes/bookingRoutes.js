@@ -1,22 +1,15 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/auth');
 const {
   bookRooms,
-  getUserBookings,
+  getBookings,
   getBookingById,
-  cancelBooking,
-  getBookingStats
+  cancelBooking
 } = require('../controllers/bookingController');
 
-// All routes require authentication
-router.use(protect);
-
-// ✅ REMOVE bookingValidation middleware (तुमच्या validation मध्ये problem आहे)
-router.post('/', bookRooms); // Simple validation inside controller
-
-router.get('/my-bookings', getUserBookings);
-router.get('/stats', getBookingStats);
+// Public routes
+router.post('/', bookRooms);
+router.get('/', getBookings);
 router.get('/:id', getBookingById);
 router.put('/:id/cancel', cancelBooking);
 
